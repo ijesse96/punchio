@@ -6,6 +6,8 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+    integrations:
+      app_store_connect: codemagic
     scripts:
       - name: Set up keychain to be used for codesigning
         script: |
