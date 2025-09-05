@@ -903,8 +903,8 @@ class DAWGridPainter extends CustomPainter {
   void _drawWaveform(Canvas canvas, Size size, double centerY, double waveformHeight) {
     if (waveform.isEmpty) return;
 
-    final barWidth = 2.0;
-    final barSpacing = 1.0;
+    const barWidth = 2.0;
+    const barSpacing = 1.0;
     final maxHeight = waveformHeight * 0.8;
 
     // Draw waveform bars
