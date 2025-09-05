@@ -9,7 +9,7 @@ class AudioMonitoringService {
       final result = await _channel.invokeMethod('startMonitoring');
       return result == true;
     } catch (e) {
-      print('Failed to start monitoring: $e');
+              // print('Failed to start monitoring: $e');
       return false;
     }
   }
@@ -20,7 +20,7 @@ class AudioMonitoringService {
       final result = await _channel.invokeMethod('stopMonitoring');
       return result == true;
     } catch (e) {
-      print('Failed to stop monitoring: $e');
+              // print('Failed to stop monitoring: $e');
       return false;
     }
   }
@@ -31,7 +31,7 @@ class AudioMonitoringService {
       final result = await _channel.invokeMethod('isMonitoring');
       return result == true;
     } catch (e) {
-      print('Failed to check monitoring status: $e');
+      // print('Failed to check monitoring status: $e');
       return false;
     }
   }
@@ -42,7 +42,7 @@ class AudioMonitoringService {
       final result = await _channel.invokeMethod('setMonitoringVolume', {'volume': volume});
       return result == true;
     } catch (e) {
-      print('Failed to set monitoring volume: $e');
+              // print('Failed to set monitoring volume: $e');
       return false;
     }
   }
@@ -53,7 +53,7 @@ class AudioMonitoringService {
       final result = await _channel.invokeMethod('getAudioLevel');
       return (result as num).toDouble();
     } catch (e) {
-      print('Failed to get audio level: $e');
+              // print('Failed to get audio level: $e');
       return 0.0;
     }
   }
@@ -64,7 +64,7 @@ class AudioMonitoringService {
       final result = await _channel.invokeMethod('getLatency');
       return (result as num).toDouble();
     } catch (e) {
-      print('Failed to get latency: $e');
+              // print('Failed to get latency: $e');
       return 0.0;
     }
   }

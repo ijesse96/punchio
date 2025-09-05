@@ -72,7 +72,7 @@ class _PunchioHomePageState extends State<PunchioHomePage>
   final double _minZoom = 0.25;
   final double _maxZoom = 4.0;
   int _currentBar = 1;
-  int _totalBars = 32; // Default to 32 bars
+  final int _totalBars = 32; // Default to 32 bars
 
   @override
   void initState() {
@@ -128,11 +128,11 @@ class _PunchioHomePageState extends State<PunchioHomePage>
       // Use native monitoring service
       final success = await AudioMonitoringService.startMonitoring();
       if (success) {
-        print('🎤 Native audio monitoring started - you should now hear yourself!');
+        // print('🎤 Native audio monitoring started - you should now hear yourself!');
         
         // Get latency information
         _currentLatency = await AudioMonitoringService.getLatency();
-        print('📊 Current latency: ${_currentLatency.toStringAsFixed(1)}ms');
+        // print('📊 Current latency: ${_currentLatency.toStringAsFixed(1)}ms');
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -144,7 +144,7 @@ class _PunchioHomePageState extends State<PunchioHomePage>
           );
         }
       } else {
-        print('❌ Failed to start native monitoring');
+        // print('❌ Failed to start native monitoring');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -156,7 +156,7 @@ class _PunchioHomePageState extends State<PunchioHomePage>
         }
       }
     } catch (e) {
-      print('Failed to start native audio monitoring: $e');
+      // print('Failed to start native audio monitoring: $e');
     }
   }
 
@@ -165,7 +165,7 @@ class _PunchioHomePageState extends State<PunchioHomePage>
       // Use native monitoring service
       final success = await AudioMonitoringService.stopMonitoring();
       if (success) {
-        print('🔇 Native audio monitoring stopped');
+        // print('🔇 Native audio monitoring stopped');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -176,10 +176,10 @@ class _PunchioHomePageState extends State<PunchioHomePage>
           );
         }
       } else {
-        print('❌ Failed to stop native monitoring');
+        // print('❌ Failed to stop native monitoring');
       }
     } catch (e) {
-      print('Failed to stop native audio monitoring: $e');
+      // print('Failed to stop native audio monitoring: $e');
     }
   }
 
@@ -284,7 +284,7 @@ class _PunchioHomePageState extends State<PunchioHomePage>
       });
       
     } catch (e) {
-      print('Recording error: $e');
+      // print('Recording error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Recording failed: $e')),
@@ -320,7 +320,7 @@ class _PunchioHomePageState extends State<PunchioHomePage>
       }
       
     } catch (e) {
-      print('Stop recording error: $e');
+      // print('Stop recording error: $e');
     }
   }
 
@@ -370,10 +370,10 @@ class _PunchioHomePageState extends State<PunchioHomePage>
     return (4 * 60) / _bpm;
   }
 
-  double _getBeatDuration() {
-    // 1 beat duration in seconds
-    return 60.0 / _bpm;
-  }
+  // double _getBeatDuration() {
+  //   // 1 beat duration in seconds
+  //   return 60.0 / _bpm;
+  // }
 
   double _getPixelsPerBar() {
     // Base pixels per bar, adjusted by zoom level
