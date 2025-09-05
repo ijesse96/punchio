@@ -6,6 +6,15 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      APP_STORE_CONNECT_ISSUER_ID: 0461070d-cd6e-44ed-be15-ac35a362b8e9
+      APP_STORE_CONNECT_KEY_IDENTIFIER: UXJ7G6MC8C
+      APP_STORE_CONNECT_PRIVATE_KEY: |
+        -----BEGIN PRIVATE KEY-----
+        MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgUi+IvXb/vgrBgrXX
+        Xbt2k1mMR/CLJeFuj0PJhTlE3yegCgYIKoZIzj0DAQehRANCAAQ/rhAl7FTPiAs/
+        Oqk07cO1lWjAEUjp4txt/2FMQhYiltyAtYUU+h642kHenNaXDxBS2/4Xlgs2a5r3
+        cxIFQCRL
+        -----END PRIVATE KEY-----
     scripts:
       - name: Set up keychain to be used for codesigning
         script: |
