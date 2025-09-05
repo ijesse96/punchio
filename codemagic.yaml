@@ -1,0 +1,57 @@
+workflows:
+  ios-workflow:
+    name: iOS Workflow
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Set up keychain to be used for codesigning
+        script: |
+          keychain initialize
+      - name: Set up signing certificate
+        script: |
+          app-store-connect fetch-signing-files $APP_STORE_CONNECT_ISSUER_ID $APP_STORE_CONNECT_KEY_IDENTIFIER $APP_STORE_CONNECT_PRIVATE_KEY --type IOS_APP_STORE --create
+      - name: Set up provisioning profile
+        script: |
+          app-store-connect fetch-signing-files $APP_STORE_CONNECT_ISSUER_ID $APP_STORE_CONNECT_KEY_IDENTIFIER $APP_STORE_CONNECT_PRIVATE_KEY --type IOS_APP_STORE --create
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Flutter analyze
+        script: |
+          flutter analyze
+      - name: Flutter unit tests
+        script: |
+          flutter test
+      - name: Build ipa for distribution
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        
+        # Configuration related to TestFlight (optional)
+        # Note: This action is performed during post-processing.
+        submit_to_testflight: true
+        beta_groups: # Specify the names of beta tester groups that will get access to the build once it has passed beta review.
+          - group name 1
+          - group name 2
+
+        # Configuration related to App Store (optional)
+        # Note: This action is performed during post-processing.
+        submit_to_app_store: false
+
+      email:
+        recipients:
+          - user@example.com
+        notify:
+          success: true
+          failure: false
