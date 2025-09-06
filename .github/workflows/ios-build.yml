@@ -77,28 +77,28 @@ jobs:
         echo ""
         
         # Check if it's a valid plist (either XML or binary)
-        if plutil -lint $PROVISIONING_PROFILE_PATH 2>/dev/null; then
-          echo "Provisioning profile is valid plist"
-          # Extract UUID from the profile
-          PROFILE_UUID=$(plutil -extract UUID raw $PROVISIONING_PROFILE_PATH 2>/dev/null || echo "UUID_NOT_FOUND")
+        # First try to convert to XML to validate and extract UUID
+        TEMP_XML_PATH=$RUNNER_TEMP/temp_profile.plist
+        if plutil -convert xml1 $PROVISIONING_PROFILE_PATH -o $TEMP_XML_PATH 2>/dev/null; then
+          echo "Provisioning profile is valid (converted to XML for processing)"
+          
+          # Extract UUID from the XML version
+          PROFILE_UUID=$(plutil -extract UUID raw $TEMP_XML_PATH 2>/dev/null || echo "UUID_NOT_FOUND")
           echo "Profile UUID: $PROFILE_UUID"
           
           # Copy to the correct location with UUID as filename
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           if [ "$PROFILE_UUID" != "UUID_NOT_FOUND" ]; then
+            # Copy the original binary file (not the XML version)
             cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-            echo "Copied profile as $PROFILE_UUID.mobileprovision"
-            
-            # Also try to convert to binary format if it's XML
-            if head -c 10 $PROVISIONING_PROFILE_PATH | grep -q "<?xml"; then
-              echo "Converting XML profile to binary format for Xcode compatibility"
-              plutil -convert binary1 $PROVISIONING_PROFILE_PATH -o ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-              echo "Converted to binary format"
-            fi
+            echo "Copied binary profile as $PROFILE_UUID.mobileprovision"
           else
             cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
             echo "Copied profile with original name"
           fi
+          
+          # Clean up temp file
+          rm -f $TEMP_XML_PATH
         else
           echo "ERROR: Provisioning profile is not a valid plist"
           exit 1
