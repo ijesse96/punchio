@@ -76,7 +76,7 @@ jobs:
         head -c 100 $PROVISIONING_PROFILE_PATH
         echo ""
         
-        # Check if it's a valid plist
+        # Check if it's a valid plist (either XML or binary)
         if plutil -lint $PROVISIONING_PROFILE_PATH 2>/dev/null; then
           echo "Provisioning profile is valid plist"
           # Extract UUID from the profile
@@ -88,6 +88,13 @@ jobs:
           if [ "$PROFILE_UUID" != "UUID_NOT_FOUND" ]; then
             cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
             echo "Copied profile as $PROFILE_UUID.mobileprovision"
+            
+            # Also try to convert to binary format if it's XML
+            if head -c 10 $PROVISIONING_PROFILE_PATH | grep -q "<?xml"; then
+              echo "Converting XML profile to binary format for Xcode compatibility"
+              plutil -convert binary1 $PROVISIONING_PROFILE_PATH -o ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+              echo "Converted to binary format"
+            fi
           else
             cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
             echo "Copied profile with original name"
