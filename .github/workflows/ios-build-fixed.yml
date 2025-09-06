@@ -1,0 +1,83 @@
+name: iOS Build (Fixed)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        
+    - name: Install dependencies
+      run: flutter pub get
+      
+    - name: Setup iOS build environment
+      run: |
+        # Install CocoaPods
+        sudo gem install cocoapods
+        
+        # Navigate to iOS directory and install pods
+        cd ios
+        pod install
+        cd ..
+        
+    - name: Fix iOS provisioning
+      run: |
+        # Copy provisioning profile to iOS directory
+        if [ -f "punchio.mobileprovision" ]; then
+          cp punchio.mobileprovision ios/
+          echo "Provisioning profile copied"
+        fi
+        
+        # Update Xcode project for automatic signing
+        PROJECT_FILE="ios/Runner.xcodeproj/project.pbxproj"
+        
+        # Ensure CODE_SIGN_STYLE is set to Automatic
+        sed -i.bak 's/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g' "$PROJECT_FILE"
+        
+        # Remove any existing PROVISIONING_PROFILE_SPECIFIER for automatic signing
+        sed -i.bak '/PROVISIONING_PROFILE_SPECIFIER/d' "$PROJECT_FILE"
+        
+        echo "iOS project configured for automatic signing"
+        
+    - name: Build iOS app
+      run: |
+        # Build with automatic signing and provisioning updates
+        flutter build ipa \
+          --release \
+          --no-codesign \
+          --export-options-plist=ios/ExportOptions.plist
+          
+    - name: Build iOS app with provisioning updates (alternative)
+      if: failure()
+      run: |
+        # Alternative build command with provisioning updates
+        cd ios
+        xcodebuild -workspace Runner.xcworkspace \
+          -scheme Runner \
+          -configuration Release \
+          -destination generic/platform=iOS \
+          -allowProvisioningUpdates \
+          -allowProvisioningDeviceRegistration \
+          archive \
+          -archivePath Runner.xcarchive
+        cd ..
+        
+    - name: Upload build artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-build
+        path: build/ios/ipa/*.ipa

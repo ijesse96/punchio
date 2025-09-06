@@ -1,4 +1,4 @@
-name: Build iOS App
+name: iOS Build
 
 on:
   push:
@@ -23,154 +23,80 @@ jobs:
     - name: Install dependencies
       run: flutter pub get
       
-    - name: Run Flutter analyze
-      run: flutter analyze
-      
-    - name: Install CocoaPods
+    - name: Setup iOS build environment
       run: |
+        # Install CocoaPods
+        sudo gem install cocoapods
+        
+        # Navigate to iOS directory and install pods
         cd ios
         pod install
+        cd ..
         
-    - name: Setup Xcode
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: latest-stable
-        
-    - name: Setup Apple Developer Certificate
-      env:
-        BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-        P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-        KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+    - name: Configure iOS signing
       run: |
-        # Create variables
-        CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-        # Import certificate from secrets
-        echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode --output $CERTIFICATE_PATH
-
-        # Create temporary keychain
-        security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-        security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-        security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-        # Import certificate to keychain
-        security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-        security list-keychain -d user -s $KEYCHAIN_PATH
-
-        # Apply certificate to keychain
-        security default-keychain -s $KEYCHAIN_PATH
-        security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        # Copy provisioning profile to iOS directory if it exists
+        if [ -f "punchio.mobileprovision" ]; then
+          cp punchio.mobileprovision ios/
+          echo "Provisioning profile copied to iOS directory"
+        fi
         
-    - name: Clean Provisioning Profiles (Use Automatic Signing)
-      run: |
-        echo "=== Cleaning any existing provisioning profiles ==="
-        # Remove any existing provisioning profiles to ensure clean automatic signing
-        rm -rf ~/Library/MobileDevice/Provisioning\ Profiles/*
-        echo "Provisioning profiles directory cleaned for automatic signing"
-        
-    - name: Verify and Fix Xcode Project Configuration
-      run: |
-        echo "=== Verifying Xcode project configuration ==="
-        echo "Looking for DEVELOPMENT_TEAM:"
-        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
-        
-        echo "Looking for CODE_SIGN_STYLE:"
-        grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN_STYLE found"
-        
-        echo "Looking for PRODUCT_BUNDLE_IDENTIFIER:"
-        grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
-        
-        # Ensure automatic signing is properly configured
-        echo "=== Ensuring automatic signing configuration ==="
-        python3 << 'EOF'
-        import re
-        
-        # Read the project file
-        with open('ios/Runner.xcodeproj/project.pbxproj', 'r') as f:
-            content = f.read()
-        
-        # Find and replace any Manual code signing with Automatic
-        content = re.sub(r'CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Automatic;', content)
-        
-        # Ensure DEVELOPMENT_TEAM is set for all Runner target configurations
-        runner_configs = [
-            '97C147061CF9000F007C117D /* Debug */',
-            '97C147071CF9000F007C117D /* Release */', 
-            '249021D4217E4FDB00AE95B9 /* Profile */'
-        ]
-        
-        for config in runner_configs:
-            # Find the build settings section for this configuration
-            pattern = rf'({config} = \{{[^}}]*buildSettings = \{{[^}}]*)(\}};)'
-            match = re.search(pattern, content, re.DOTALL)
-            if match:
-                build_settings = match.group(1)
-                closing = match.group(2)
-                
-                # Check if DEVELOPMENT_TEAM is already set
-                if 'DEVELOPMENT_TEAM' not in build_settings:
-                    # Add DEVELOPMENT_TEAM before the closing brace
-                    new_build_settings = build_settings + '\t\t\tDEVELOPMENT_TEAM = MNR5F55U3;\n\t\t\t'
-                    content = content.replace(match.group(0), new_build_settings + closing)
-                    print(f"Added DEVELOPMENT_TEAM to {config}")
-                
-                # Ensure CODE_SIGN_STYLE is Automatic
-                if 'CODE_SIGN_STYLE = Automatic' not in build_settings:
-                    if 'CODE_SIGN_STYLE' in build_settings:
-                        content = re.sub(r'CODE_SIGN_STYLE = [^;]+;', 'CODE_SIGN_STYLE = Automatic;', content)
-                    else:
-                        new_build_settings = build_settings + '\t\t\tCODE_SIGN_STYLE = Automatic;\n\t\t\t'
-                        content = content.replace(match.group(0), new_build_settings + closing)
-                    print(f"Set CODE_SIGN_STYLE to Automatic for {config}")
-        
-        # Write back the modified content
-        with open('ios/Runner.xcodeproj/project.pbxproj', 'w') as f:
-            f.write(content)
-        
-        print("Xcode project configuration updated successfully")
-        EOF
-        
-        echo "=== Final verification ==="
-        echo "DEVELOPMENT_TEAM configurations:"
-        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj
-        echo "CODE_SIGN_STYLE configurations:"
+        # Verify Xcode project configuration
+        echo "Checking Xcode project configuration..."
         grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj
+        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj
+        grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj
         
-    - name: Build iOS App
-      env:
-        DEVELOPER_TEAM: MNR5F55U3
-        CODE_SIGN_STYLE: Automatic
+    - name: Build iOS app
       run: |
-        echo "=== Building iOS app with automatic signing ==="
-        
-        # Try a different approach - modify the Flutter build script directly
-        echo "=== Attempting to patch Flutter build process ==="
-        
-        # Find the Flutter build script
-        FLUTTER_BUILD_SCRIPT=$(find $FLUTTER_ROOT -name "xcode_backend.sh" | head -1)
-        echo "Found Flutter build script at: $FLUTTER_BUILD_SCRIPT"
-        
-        # Create a backup
-        cp "$FLUTTER_BUILD_SCRIPT" "$FLUTTER_BUILD_SCRIPT.backup"
-        
-        # Patch the script to add -allowProvisioningUpdates
-        sed -i '' 's/xcodebuild /xcodebuild -allowProvisioningUpdates /g' "$FLUTTER_BUILD_SCRIPT"
-        echo "Patched Flutter build script to include -allowProvisioningUpdates"
-        
-        # Build with verbose output to see what's happening
-        flutter build ipa --release \
-          --build-name=1.0.${{ github.run_number }} \
-          --build-number=${{ github.run_number }} \
+        # Build with Flutter
+        flutter build ipa \
+          --release \
           --export-options-plist=ios/ExportOptions.plist \
           --verbose
-        
-        # Restore the original script
-        mv "$FLUTTER_BUILD_SCRIPT.backup" "$FLUTTER_BUILD_SCRIPT"
-        echo "Restored original Flutter build script"
           
-    - name: Upload IPA
+    - name: Alternative build with xcodebuild (if Flutter build fails)
+      if: failure()
+      run: |
+        echo "Flutter build failed, trying direct xcodebuild..."
+        cd ios
+        
+        # Build with xcodebuild and automatic provisioning
+        xcodebuild -workspace Runner.xcworkspace \
+          -scheme Runner \
+          -configuration Release \
+          -destination generic/platform=iOS \
+          -allowProvisioningUpdates \
+          -allowProvisioningDeviceRegistration \
+          archive \
+          -archivePath Runner.xcarchive \
+          -verbose
+          
+        # Export IPA from archive
+        xcodebuild -exportArchive \
+          -archivePath Runner.xcarchive \
+          -exportPath ./build \
+          -exportOptionsPlist ExportOptions.plist \
+          -allowProvisioningUpdates
+          
+        cd ..
+        
+    - name: Upload build artifacts
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: ios-app
-        path: build/ios/ipa/*.ipa
+        name: ios-build-artifacts
+        path: |
+          build/ios/ipa/*.ipa
+          ios/build/*.ipa
+        retention-days: 7
+        
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-build-logs
+        path: |
+          build/
+          ios/build/
+        retention-days: 3
