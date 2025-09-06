@@ -76,32 +76,66 @@ jobs:
         head -c 100 $PROVISIONING_PROFILE_PATH
         echo ""
         
-        # Check if it's a valid plist (either XML or binary)
-        # First try to convert to XML to validate and extract UUID
-        TEMP_XML_PATH=$RUNNER_TEMP/temp_profile.plist
-        if plutil -convert xml1 $PROVISIONING_PROFILE_PATH -o $TEMP_XML_PATH 2>/dev/null; then
-          echo "Provisioning profile is valid (converted to XML for processing)"
-          
-          # Extract UUID from the XML version
-          PROFILE_UUID=$(plutil -extract UUID raw $TEMP_XML_PATH 2>/dev/null || echo "UUID_NOT_FOUND")
-          echo "Profile UUID: $PROFILE_UUID"
-          
-          # Copy to the correct location with UUID as filename
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          if [ "$PROFILE_UUID" != "UUID_NOT_FOUND" ]; then
-            # Copy the original binary file (not the XML version)
-            cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
-            echo "Copied binary profile as $PROFILE_UUID.mobileprovision"
+        # Check if it's a valid plist and determine format
+        if head -c 10 $PROVISIONING_PROFILE_PATH | grep -q "<?xml"; then
+          echo "Provisioning profile is in XML format"
+          # It's already XML, validate it
+          if plutil -lint $PROVISIONING_PROFILE_PATH 2>/dev/null; then
+            echo "XML profile is valid"
+            # Extract UUID from XML
+            PROFILE_UUID=$(plutil -extract UUID raw $PROVISIONING_PROFILE_PATH 2>/dev/null || echo "UUID_NOT_FOUND")
+            echo "Profile UUID: $PROFILE_UUID"
+            
+            # Convert to binary format for Xcode
+            BINARY_PROFILE_PATH=$RUNNER_TEMP/binary_profile.mobileprovision
+            if plutil -convert binary1 $PROVISIONING_PROFILE_PATH -o $BINARY_PROFILE_PATH 2>/dev/null; then
+              echo "Successfully converted to binary format"
+              
+              # Copy to the correct location with UUID as filename
+              mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+              if [ "$PROFILE_UUID" != "UUID_NOT_FOUND" ]; then
+                cp $BINARY_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+                echo "Copied binary profile as $PROFILE_UUID.mobileprovision"
+              else
+                cp $BINARY_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+                echo "Copied profile with original name"
+              fi
+            else
+              echo "ERROR: Failed to convert XML to binary format"
+              exit 1
+            fi
           else
-            cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
-            echo "Copied profile with original name"
+            echo "ERROR: XML provisioning profile is not valid"
+            exit 1
           fi
-          
-          # Clean up temp file
-          rm -f $TEMP_XML_PATH
         else
-          echo "ERROR: Provisioning profile is not a valid plist"
-          exit 1
+          echo "Provisioning profile appears to be in binary format"
+          # Try to convert binary to XML to validate
+          TEMP_XML_PATH=$RUNNER_TEMP/temp_profile.plist
+          if plutil -convert xml1 $PROVISIONING_PROFILE_PATH -o $TEMP_XML_PATH 2>/dev/null; then
+            echo "Binary profile is valid (converted to XML for processing)"
+            
+            # Extract UUID from the XML version
+            PROFILE_UUID=$(plutil -extract UUID raw $TEMP_XML_PATH 2>/dev/null || echo "UUID_NOT_FOUND")
+            echo "Profile UUID: $PROFILE_UUID"
+            
+            # Copy to the correct location with UUID as filename
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            if [ "$PROFILE_UUID" != "UUID_NOT_FOUND" ]; then
+              # Copy the original binary file
+              cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+              echo "Copied binary profile as $PROFILE_UUID.mobileprovision"
+            else
+              cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+              echo "Copied profile with original name"
+            fi
+            
+            # Clean up temp file
+            rm -f $TEMP_XML_PATH
+          else
+            echo "ERROR: Binary provisioning profile is not valid"
+            exit 1
+          fi
         fi
         
     - name: Configure Xcode Project
