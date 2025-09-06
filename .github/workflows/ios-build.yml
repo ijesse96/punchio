@@ -67,7 +67,8 @@ jobs:
         PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
       run: |
         PROVISIONING_PROFILE_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-        echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode --output $PROVISIONING_PROFILE_PATH
+        # Clean the base64 string and decode properly
+        echo "$PROVISIONING_PROFILE_BASE64" | tr -d '\n\r' | base64 --decode > $PROVISIONING_PROFILE_PATH
         
         # Verify the provisioning profile
         echo "Provisioning profile size: $(wc -c < $PROVISIONING_PROFILE_PATH) bytes"
