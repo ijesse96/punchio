@@ -2,6 +2,9 @@
 
 A new Flutter project.
 
+## Build Test
+Testing iOS build with fixed provisioning profile format.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
