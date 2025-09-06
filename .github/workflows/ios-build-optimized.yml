@@ -78,6 +78,25 @@ jobs:
         echo "   - Bundle ID: com.punchio.punchio"
         echo "   - Apple ID: $APPLE_ID"
         
+    - name: Setup Code Signing
+      env:
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      run: |
+        echo "🔐 Setting up code signing..."
+        
+        # Create keychain for code signing
+        security create-keychain -p "" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "" build.keychain
+        security set-keychain-settings -t 3600 -u build.keychain
+        
+        # Set keychain search list
+        security list-keychains -d user -s build.keychain
+        
+        echo "✅ Code signing setup completed"
+        
     - name: Build iOS app (with error capture)
       env:
         TEAM_ID: ${{ secrets.TEAM_ID }}
@@ -99,9 +118,10 @@ jobs:
           -configuration Release \
           -destination generic/platform=iOS \
           -archivePath build/Runner.xcarchive \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGN_IDENTITY="Apple Development" \
+          CODE_SIGNING_REQUIRED=YES \
+          CODE_SIGNING_ALLOWED=YES \
+          DEVELOPMENT_TEAM="$TEAM_ID" \
           PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
           archive 2>&1 | tee xcodebuild.log || {
             echo "❌ Xcode build failed! Key errors:"
