@@ -65,18 +65,24 @@ jobs:
     - name: Setup Provisioning Profile
       env:
         PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
-        PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.PROVISIONING_PROFILE_SPECIFIER }}
       run: |
         PROVISIONING_PROFILE_PATH=$RUNNER_TEMP/build_pp.mobileprovision
         echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode --output $PROVISIONING_PROFILE_PATH
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
         cp $PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles
         
+    - name: Configure Xcode Project
+      run: |
+        # Set the development team ID in the Xcode project
+        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
+        sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Automatic;/g' ios/Runner.xcodeproj/project.pbxproj
+        
     - name: Build iOS App
       run: |
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
-          --build-number=${{ github.run_number }}
+          --build-number=${{ github.run_number }} \
+          --export-method=development
           
     - name: Upload IPA
       uses: actions/upload-artifact@v4
