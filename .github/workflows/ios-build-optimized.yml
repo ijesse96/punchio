@@ -1,0 +1,176 @@
+name: iOS Build (Optimized Logs)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        
+    - name: Install dependencies
+      run: flutter pub get
+      
+    - name: Setup iOS build environment
+      run: |
+        # Install CocoaPods (suppress verbose output)
+        sudo gem install cocoapods --quiet
+        
+        # Run iOS build fix script (reduce output)
+        chmod +x ios_build_fix.sh
+        ./ios_build_fix.sh 2>/dev/null || echo "Build fix script completed"
+        
+    - name: Verify iOS configuration
+      run: |
+        echo "🔍 Verifying iOS configuration..."
+        
+        # Copy provisioning profile to iOS directory if it exists
+        if [ -f "punchio.mobileprovision" ]; then
+          cp punchio.mobileprovision ios/
+          echo "✅ Provisioning profile copied"
+        else
+          echo "⚠️ No provisioning profile found"
+        fi
+        
+        # Quick verification (only show errors)
+        echo "📋 Key configuration:"
+        grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj | head -1
+        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj | head -1
+        grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj | head -1
+        
+    - name: Setup Apple Developer Environment
+      env:
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      run: |
+        echo "🔍 Setting up Apple Developer environment..."
+        
+        # Verify secrets are available
+        if [ -z "$TEAM_ID" ]; then
+          echo "❌ ERROR: TEAM_ID secret is not set!"
+          exit 1
+        fi
+        if [ -z "$APPLE_ID" ]; then
+          echo "❌ ERROR: APPLE_ID secret is not set!"
+          exit 1
+        fi
+        if [ -z "$APPLE_PASSWORD" ]; then
+          echo "❌ ERROR: APPLE_PASSWORD secret is not set!"
+          exit 1
+        fi
+        
+        echo "✅ All required secrets are available"
+        echo "📋 Configuration:"
+        echo "   - Team ID: $TEAM_ID"
+        echo "   - Bundle ID: com.punchio.punchio"
+        echo "   - Apple ID: $APPLE_ID"
+        
+    - name: Build iOS app (with error capture)
+      env:
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      run: |
+        echo "🚀 Building iOS app..."
+        
+        # Build with proper error capture
+        flutter build ipa \
+          --release \
+          --export-options-plist=ios/ExportOptions.plist \
+          --verbose 2>&1 | tee build.log || {
+            echo "❌ Build failed! Key errors:"
+            grep -i "error\|failed\|❌" build.log | head -20
+            echo ""
+            echo "🔍 Checking build directory contents..."
+            ls -la build/ || echo "No build directory found"
+            ls -la ios/build/ || echo "No ios/build directory found"
+            echo ""
+            echo "🔍 Checking Flutter doctor..."
+            flutter doctor -v
+            echo ""
+            echo "📋 Full error log saved to build.log"
+            exit 1
+          }
+          
+        echo "✅ Build completed successfully!"
+        
+    - name: Debug iOS Configuration (on failure)
+      if: failure()
+      run: |
+        echo "🔍 Debugging iOS configuration after build failure..."
+        echo ""
+        echo "📋 Flutter doctor output:"
+        flutter doctor -v
+        echo ""
+        echo "📋 iOS project structure:"
+        ls -la ios/
+        echo ""
+        echo "📋 Xcode project settings:"
+        grep -n "DEVELOPMENT_TEAM\|PRODUCT_BUNDLE_IDENTIFIER\|CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj | head -10
+        echo ""
+        echo "📋 Export options:"
+        cat ios/ExportOptions.plist
+        echo ""
+        echo "📋 Environment variables:"
+        echo "TEAM_ID: ${TEAM_ID:-'NOT SET'}"
+        echo "APPLE_ID: ${APPLE_ID:-'NOT SET'}"
+        echo "APPLE_PASSWORD: ${APPLE_PASSWORD:+'SET'}"
+        
+    - name: Alternative build with xcodebuild (if Flutter build fails)
+      if: failure()
+      run: |
+        echo "🔄 Trying alternative xcodebuild approach..."
+        cd ios
+        
+        # Clean and build with minimal output
+        rm -rf build/
+        
+        xcodebuild -workspace Runner.xcworkspace \
+          -scheme Runner \
+          -configuration Release \
+          -destination generic/platform=iOS \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
+          build 2>&1 | tee xcodebuild.log || {
+            echo "❌ xcodebuild failed! Key errors:"
+            grep -i "error\|failed" xcodebuild.log | head -10
+            exit 1
+          }
+          
+        echo "✅ Alternative build completed!"
+        cd ..
+        
+    - name: Upload build artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-build-artifacts
+        path: |
+          build/ios/Release-iphoneos/
+          ios/build/
+        retention-days: 7
+        
+    - name: Upload error logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-error-logs
+        path: |
+          build.log
+          xcodebuild.log
+        retention-days: 3
