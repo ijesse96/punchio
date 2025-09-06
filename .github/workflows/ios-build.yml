@@ -51,10 +51,10 @@ jobs:
         # Set environment variables for build
         export FLUTTER_BUILD_MODE=release
         
-        # Build with Flutter using automatic signing
-        flutter build ipa \
+        # Build iOS app without code signing for CI
+        flutter build ios \
           --release \
-          --export-options-plist=ios/ExportOptions.plist \
+          --no-codesign \
           --verbose
           
     - name: Alternative build with xcodebuild (if Flutter build fails)
@@ -66,26 +66,16 @@ jobs:
         # Clean build directory
         rm -rf build/
         
-        # Build with xcodebuild using automatic signing
+        # Build with xcodebuild without code signing
         xcodebuild -workspace Runner.xcworkspace \
           -scheme Runner \
           -configuration Release \
           -destination generic/platform=iOS \
-          -allowProvisioningUpdates \
-          -allowProvisioningDeviceRegistration \
-          CODE_SIGN_STYLE=Automatic \
-          DEVELOPMENT_TEAM="" \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
           PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
-          archive \
-          -archivePath Runner.xcarchive \
-          -verbose
-          
-        # Export IPA from archive
-        xcodebuild -exportArchive \
-          -archivePath Runner.xcarchive \
-          -exportPath ./build \
-          -exportOptionsPlist ExportOptions.plist \
-          -allowProvisioningUpdates \
+          build \
           -verbose
           
         cd ..
@@ -96,8 +86,8 @@ jobs:
       with:
         name: ios-build-artifacts
         path: |
-          build/ios/ipa/*.ipa
-          ios/build/*.ipa
+          build/ios/Release-iphoneos/
+          ios/build/
         retention-days: 7
         
     - name: Upload logs on failure
