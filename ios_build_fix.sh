@@ -27,7 +27,7 @@ echo "⚙️ Configuring Xcode project for CI..."
 cp Runner.xcodeproj/project.pbxproj Runner.xcodeproj/project.pbxproj.backup
 
 # Set correct bundle identifier
-sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = .*;/PRODUCT_BUNDLE_IDENTIFIER = com.punchio.punchi;/g' Runner.xcodeproj/project.pbxproj
+sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = .*;/PRODUCT_BUNDLE_IDENTIFIER = com.punchio.punchio;/g' Runner.xcodeproj/project.pbxproj
 
 # Set correct development team
 sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = MNRC5F55U3;/g' Runner.xcodeproj/project.pbxproj
@@ -52,7 +52,7 @@ sed -i '' 's/PROVISIONING_PROFILE_REQUIRED = YES;/PROVISIONING_PROFILE_REQUIRED 
 
 echo "✅ iOS build configuration fixed!"
 echo "📋 Configuration summary:"
-echo "   - Bundle ID: com.punchio.punchi"
+echo "   - Bundle ID: com.punchio.punchio"
 echo "   - Code Signing: Automatic"
 echo "   - Development Team: MNRC5F55U3"
 echo "   - Provisioning Profile: (automatic)"
