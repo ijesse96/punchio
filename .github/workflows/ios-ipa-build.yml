@@ -69,67 +69,33 @@ jobs:
         APPLE_ID: ${{ secrets.APPLE_ID }}
         APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
-        echo "🚀 Building iOS IPA..."
+        echo "🚀 Building iOS IPA with code signing..."
         
-        # Build iOS app using xcodebuild with automatic code signing
-        cd ios
-        
-        # Clean previous builds
-        rm -rf build/
-        
-        # Build the app with automatic code signing
-        xcodebuild -workspace Runner.xcworkspace \
-          -scheme Runner \
-          -configuration Release \
-          -destination generic/platform=iOS \
-          -archivePath build/Runner.xcarchive \
-          CODE_SIGN_IDENTITY="Apple Development" \
-          CODE_SIGNING_REQUIRED=YES \
-          CODE_SIGNING_ALLOWED=YES \
-          DEVELOPMENT_TEAM="$TEAM_ID" \
-          PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
-          -allowProvisioningUpdates \
-          -allowProvisioningDeviceRegistration \
-          archive 2>&1 | tee xcodebuild.log || {
-            echo "❌ Xcode build failed! Key errors:"
-            grep -i "error\|failed" xcodebuild.log | head -20
+        # Use Flutter build with code signing enabled
+        flutter build ipa \
+          --release \
+          --export-options-plist=ios/ExportOptions.plist \
+          --build-name=1.0.0 \
+          --build-number=1 2>&1 | tee flutter_build.log || {
+            echo "❌ Flutter build failed! Key errors:"
+            grep -i "error\|failed" flutter_build.log | head -20
             echo ""
-            echo "📋 Full xcodebuild log:"
-            cat xcodebuild.log
+            echo "📋 Full Flutter build log:"
+            cat flutter_build.log
             exit 1
           }
           
-        echo "✅ Xcode build completed successfully!"
-        
-        # Export IPA
-        echo "🚀 Exporting IPA..."
-        xcodebuild -exportArchive \
-          -archivePath build/Runner.xcarchive \
-          -exportPath build/ipa \
-          -exportOptionsPlist ExportOptions.plist \
-          -allowProvisioningUpdates \
-          -allowProvisioningDeviceRegistration 2>&1 | tee export.log || {
-            echo "❌ IPA export failed! Key errors:"
-            grep -i "error\|failed" export.log | head -20
-            echo ""
-            echo "📋 Full export log:"
-            cat export.log
-            exit 1
-          }
-          
-        echo "✅ IPA export completed successfully!"
+        echo "✅ Flutter IPA build completed successfully!"
         
         # List the generated IPA file
         echo "📱 Generated IPA file:"
-        ls -la build/ipa/*.ipa
-        
-        cd ..
+        ls -la build/ios/ipa/*.ipa
         
     - name: Upload IPA file
       uses: actions/upload-artifact@v4
       with:
         name: punchio-ipa
-        path: ios/build/ipa/*.ipa
+        path: build/ios/ipa/*.ipa
         retention-days: 30
         
     - name: Debug on failure
