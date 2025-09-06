@@ -26,13 +26,11 @@ echo "⚙️ Configuring Xcode project for CI..."
 # Create a backup of the original project file
 cp Runner.xcodeproj/project.pbxproj Runner.xcodeproj/project.pbxproj.backup
 
-# Fix bundle identifier - remove the team ID prefix
-sed -i '' 's/MNRC5F55U3\.com\.punchio\.punchio/com.punchio.punchio/g' Runner.xcodeproj/project.pbxproj
-sed -i '' 's/MNRC5F55U3\.com\.punchio\.punchio/com.punchio.punchio/g' Runner.xcodeproj/project.pbxproj
+# Set correct bundle identifier
+sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = .*;/PRODUCT_BUNDLE_IDENTIFIER = com.punchio.punchi;/g' Runner.xcodeproj/project.pbxproj
 
-# Set development team to empty for automatic signing
-sed -i '' 's/DEVELOPMENT_TEAM = MNR5F55U3;/DEVELOPMENT_TEAM = "";/g' Runner.xcodeproj/project.pbxproj
-sed -i '' 's/DEVELOPMENT_TEAM = MNR5F55U3;/DEVELOPMENT_TEAM = "";/g' Runner.xcodeproj/project.pbxproj
+# Set correct development team
+sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = MNRC5F55U3;/g' Runner.xcodeproj/project.pbxproj
 
 # Ensure code signing style is automatic
 sed -i '' 's/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g' Runner.xcodeproj/project.pbxproj
@@ -54,10 +52,10 @@ sed -i '' 's/PROVISIONING_PROFILE_REQUIRED = YES;/PROVISIONING_PROFILE_REQUIRED 
 
 echo "✅ iOS build configuration fixed!"
 echo "📋 Configuration summary:"
-echo "   - Bundle ID: com.punchio.punchio"
+echo "   - Bundle ID: com.punchio.punchi"
 echo "   - Code Signing: Automatic"
-echo "   - Development Team: (empty for CI)"
-echo "   - Provisioning Profile: (empty for CI)"
+echo "   - Development Team: MNRC5F55U3"
+echo "   - Provisioning Profile: (automatic)"
 
 cd ..
 
