@@ -96,10 +96,13 @@ public class AudioMonitoringPlugin: NSObject, FlutterPlugin {
             // Create ultra-low latency format
             let lowLatencyFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)
             
-            // Install tap with minimal buffer size for lowest latency
+            // Connect input directly to output for ultra-low latency passthrough
+            audioEngine.connect(inputNode, to: outputNode, format: lowLatencyFormat)
+            
+            // Install tap for monitoring audio levels (optional)
             inputNode.installTap(onBus: 0, bufferSize: 256, format: lowLatencyFormat) { [weak self] buffer, _ in
-                // Route audio directly to output with no processing delay
-                self?.outputNode?.scheduleBuffer(buffer, at: nil, options: [.interrupts, .interruptsAtLoop], completionHandler: nil)
+                // This tap is just for monitoring - the actual audio passthrough happens via the connection above
+                // You can add audio level monitoring or other processing here if needed
             }
             
             // Start the audio engine
@@ -121,6 +124,9 @@ public class AudioMonitoringPlugin: NSObject, FlutterPlugin {
             if let audioEngine = audioEngine {
                 audioEngine.stop()
                 inputNode?.removeTap(onBus: 0)
+                // Disconnect the audio nodes
+                audioEngine.disconnectNodeInput(inputNode!)
+                audioEngine.disconnectNodeInput(outputNode!)
             }
             
             audioEngine = nil
