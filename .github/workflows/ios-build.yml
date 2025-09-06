@@ -69,7 +69,7 @@ jobs:
         rm -rf ~/Library/MobileDevice/Provisioning\ Profiles/*
         echo "Provisioning profiles directory cleaned for automatic signing"
         
-    - name: Verify Xcode Project Configuration
+    - name: Verify and Fix Xcode Project Configuration
       run: |
         echo "=== Verifying Xcode project configuration ==="
         echo "Looking for DEVELOPMENT_TEAM:"
@@ -81,18 +81,84 @@ jobs:
         echo "Looking for PRODUCT_BUNDLE_IDENTIFIER:"
         grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
         
-        echo "=== Xcode project configuration verified ==="
+        # Ensure automatic signing is properly configured
+        echo "=== Ensuring automatic signing configuration ==="
+        python3 << 'EOF'
+        import re
+        
+        # Read the project file
+        with open('ios/Runner.xcodeproj/project.pbxproj', 'r') as f:
+            content = f.read()
+        
+        # Find and replace any Manual code signing with Automatic
+        content = re.sub(r'CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Automatic;', content)
+        
+        # Ensure DEVELOPMENT_TEAM is set for all Runner target configurations
+        runner_configs = [
+            '97C147061CF9000F007C117D /* Debug */',
+            '97C147071CF9000F007C117D /* Release */', 
+            '249021D4217E4FDB00AE95B9 /* Profile */'
+        ]
+        
+        for config in runner_configs:
+            # Find the build settings section for this configuration
+            pattern = rf'({config} = \{{[^}}]*buildSettings = \{{[^}}]*)(\}};)'
+            match = re.search(pattern, content, re.DOTALL)
+            if match:
+                build_settings = match.group(1)
+                closing = match.group(2)
+                
+                # Check if DEVELOPMENT_TEAM is already set
+                if 'DEVELOPMENT_TEAM' not in build_settings:
+                    # Add DEVELOPMENT_TEAM before the closing brace
+                    new_build_settings = build_settings + '\t\t\tDEVELOPMENT_TEAM = MNR5F55U3;\n\t\t\t'
+                    content = content.replace(match.group(0), new_build_settings + closing)
+                    print(f"Added DEVELOPMENT_TEAM to {config}")
+                
+                # Ensure CODE_SIGN_STYLE is Automatic
+                if 'CODE_SIGN_STYLE = Automatic' not in build_settings:
+                    if 'CODE_SIGN_STYLE' in build_settings:
+                        content = re.sub(r'CODE_SIGN_STYLE = [^;]+;', 'CODE_SIGN_STYLE = Automatic;', content)
+                    else:
+                        new_build_settings = build_settings + '\t\t\tCODE_SIGN_STYLE = Automatic;\n\t\t\t'
+                        content = content.replace(match.group(0), new_build_settings + closing)
+                    print(f"Set CODE_SIGN_STYLE to Automatic for {config}")
+        
+        # Write back the modified content
+        with open('ios/Runner.xcodeproj/project.pbxproj', 'w') as f:
+            f.write(content)
+        
+        print("Xcode project configuration updated successfully")
+        EOF
+        
+        echo "=== Final verification ==="
+        echo "DEVELOPMENT_TEAM configurations:"
+        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj
+        echo "CODE_SIGN_STYLE configurations:"
+        grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj
         
     - name: Build iOS App
       env:
         DEVELOPER_TEAM: MNR5F55U3
-        EXTRA_XCODEBUILD_FLAGS: "-allowProvisioningUpdates"
+        CODE_SIGN_STYLE: Automatic
       run: |
         echo "=== Building iOS app with automatic signing ==="
+        
+        # Create a custom xcodebuild settings file to pass -allowProvisioningUpdates
+        cat > $RUNNER_TEMP/xcode_build_settings.sh << 'EOF'
+        #!/bin/bash
+        export EXTRA_XCODEBUILD_FLAGS="-allowProvisioningUpdates"
+        echo "Set EXTRA_XCODEBUILD_FLAGS to: $EXTRA_XCODEBUILD_FLAGS"
+        EOF
+        chmod +x $RUNNER_TEMP/xcode_build_settings.sh
+        source $RUNNER_TEMP/xcode_build_settings.sh
+        
+        # Build with verbose output to see what's happening
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
           --build-number=${{ github.run_number }} \
-          --export-options-plist=ios/ExportOptions.plist
+          --export-options-plist=ios/ExportOptions.plist \
+          --verbose
           
     - name: Upload IPA
       uses: actions/upload-artifact@v4
