@@ -145,14 +145,28 @@ jobs:
           -allowProvisioningDeviceRegistration \
           archive 2>&1 | tee xcodebuild.log
         
+        # Show build summary immediately
+        echo "📋 Build Summary:"
+        if grep -q "ARCHIVE FAILED" xcodebuild.log; then
+          echo "❌ Build failed - showing key errors:"
+          grep -i "error:" xcodebuild.log | tail -10
+        elif grep -q "ARCHIVE SUCCEEDED" xcodebuild.log; then
+          echo "✅ Build succeeded!"
+        else
+          echo "⚠️ Build status unclear - checking archive..."
+        fi
+        
         # Check if build actually succeeded
         if [ ! -d "build/Runner.xcarchive" ]; then
           echo "❌ Archive was not created! Build failed."
           echo "📋 Key errors from build log:"
           grep -i "error\|failed" xcodebuild.log | head -20
           echo ""
-          echo "📋 Full xcodebuild log:"
-          cat xcodebuild.log
+          echo "📋 Last 50 lines of build log:"
+          tail -50 xcodebuild.log
+          echo ""
+          echo "📋 Build summary:"
+          grep -i "archive failed\|build failed\|error:" xcodebuild.log | tail -10
           exit 1
         fi
         
@@ -174,8 +188,8 @@ jobs:
           echo "📋 Key errors from export log:"
           grep -i "error\|failed" export.log | head -20
           echo ""
-          echo "📋 Full export log:"
-          cat export.log
+          echo "📋 Last 30 lines of export log:"
+          tail -30 export.log
           exit 1
         fi
         
