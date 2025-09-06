@@ -32,6 +32,20 @@ jobs:
         chmod +x ios_build_fix.sh
         ./ios_build_fix.sh
         
+    - name: Setup Apple Developer account
+      run: |
+        # Set up Apple Developer account authentication
+        echo "🔐 Setting up Apple Developer account authentication..."
+        
+        # Create keychain for storing credentials
+        security create-keychain -p "" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "" build.keychain
+        security set-keychain-settings -t 3600 -u build.keychain
+        
+        # Add Apple ID to keychain (this will be handled by xcodebuild with credentials)
+        echo "✅ Keychain setup complete"
+        
     - name: Verify iOS configuration
       run: |
         # Copy provisioning profile to iOS directory if it exists
@@ -57,6 +71,20 @@ jobs:
         echo "   - Bundle ID: com.punchio.punchio"
         echo "   - Build mode: release"
         echo "   - Apple ID: ${{ secrets.APPLE_ID }}"
+        
+        # Verify secrets are available
+        if [ -z "${{ secrets.TEAM_ID }}" ]; then
+          echo "❌ ERROR: TEAM_ID secret is not set!"
+          exit 1
+        fi
+        if [ -z "${{ secrets.APPLE_ID }}" ]; then
+          echo "❌ ERROR: APPLE_ID secret is not set!"
+          exit 1
+        fi
+        if [ -z "${{ secrets.APPLE_PASSWORD }}" ]; then
+          echo "❌ ERROR: APPLE_PASSWORD secret is not set!"
+          exit 1
+        fi
         
         # Build iOS app with proper code signing using Apple Developer account
         echo "🚀 Running: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist --verbose"
@@ -89,6 +117,7 @@ jobs:
         rm -rf build/
         
         echo "🚀 Running xcodebuild with Apple Developer account..."
+        echo "🔍 Using Team ID: ${{ secrets.TEAM_ID }}"
         # Build with xcodebuild using Apple Developer account credentials
         xcodebuild -workspace Runner.xcworkspace \
           -scheme Runner \
@@ -97,7 +126,7 @@ jobs:
           -allowProvisioningUpdates \
           -allowProvisioningDeviceRegistration \
           CODE_SIGN_STYLE=Automatic \
-          DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
+          DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}" \
           PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
           archive \
           -archivePath Runner.xcarchive \
@@ -151,3 +180,10 @@ jobs:
           build/
           ios/build/
         retention-days: 3
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        # Clean up keychain
+        security delete-keychain build.keychain || true
+        echo "✅ Cleanup complete"
