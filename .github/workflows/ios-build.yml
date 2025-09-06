@@ -76,22 +76,25 @@ jobs:
         # Set the development team ID in the Xcode project
         sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
         sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
-        # Also try without quotes
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
         # Set code sign identity
         sed -i '' 's/CODE_SIGN_IDENTITY = "";/CODE_SIGN_IDENTITY = "iPhone Developer";/g' ios/Runner.xcodeproj/project.pbxproj
         # Set provisioning profile
         sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "punchio Development";/g' ios/Runner.xcodeproj/project.pbxproj
+        # Also try setting empty values to our values
+        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
+        sed -i '' 's/CODE_SIGN_IDENTITY = "";/CODE_SIGN_IDENTITY = "iPhone Developer";/g' ios/Runner.xcodeproj/project.pbxproj
+        sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "punchio Development";/g' ios/Runner.xcodeproj/project.pbxproj
         
     - name: Build iOS App
+      env:
+        DEVELOPER_TEAM: MNR5F55U3
+        CODE_SIGN_IDENTITY: "iPhone Developer"
+        PROVISIONING_PROFILE_SPECIFIER: "punchio Development"
       run: |
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
           --build-number=${{ github.run_number }} \
-          --export-method=development \
-          --ios-build-arg="DEVELOPMENT_TEAM=MNR5F55U3" \
-          --ios-build-arg="CODE_SIGN_IDENTITY=iPhone Developer" \
-          --ios-build-arg="PROVISIONING_PROFILE_SPECIFIER=punchio Development"
+          --export-method=development
           
     - name: Upload IPA
       uses: actions/upload-artifact@v4
