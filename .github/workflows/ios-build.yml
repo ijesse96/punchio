@@ -161,77 +161,30 @@ jobs:
           security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision | head -20
         fi
         
-    - name: Configure Xcode Project
+    - name: Verify Xcode Project Configuration
       run: |
-        # First, let's see what's in the project file
-        echo "=== Looking for DEVELOPMENT_TEAM patterns ==="
+        echo "=== Verifying Xcode project configuration ==="
+        echo "Looking for DEVELOPMENT_TEAM:"
         grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
         
-        echo "=== Looking for CODE_SIGN patterns ==="
-        grep -n "CODE_SIGN" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN found"
+        echo "Looking for CODE_SIGN_STYLE:"
+        grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN_STYLE found"
         
-        # Use Python to modify the Xcode project file with more patterns
-        python3 << 'EOF'
-        import re
+        echo "Looking for PRODUCT_BUNDLE_IDENTIFIER:"
+        grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
         
-        # Read the project file
-        with open('ios/Runner.xcodeproj/project.pbxproj', 'r') as f:
-            content = f.read()
-        
-        print("Original content length:", len(content))
-        
-        # Try multiple patterns for DEVELOPMENT_TEAM
-        patterns = [
-            r'DEVELOPMENT_TEAM = "";',
-            r'DEVELOPMENT_TEAM = "";',
-            r'DEVELOPMENT_TEAM = "";',
-            r'DEVELOPMENT_TEAM = "";',
-            r'DEVELOPMENT_TEAM = "";',
-            r'DEVELOPMENT_TEAM = "";',
-        ]
-        
-        changes_made = False
-        for pattern in patterns:
-            if re.search(pattern, content):
-                content = re.sub(pattern, 'DEVELOPMENT_TEAM = MNR5F55U3;', content)
-                changes_made = True
-                print(f"Replaced pattern: {pattern}")
-        
-        # If no empty DEVELOPMENT_TEAM found, add it to build settings
-        if not changes_made:
-            # Find the build settings section and add DEVELOPMENT_TEAM
-            build_settings_pattern = r'(buildSettings = \{[^}]*)(\};)'
-            if re.search(build_settings_pattern, content):
-                content = re.sub(
-                    build_settings_pattern,
-                    r'\1\t\t\tDEVELOPMENT_TEAM = MNR5F55U3;\n\t\t\t\2',
-                    content
-                )
-                changes_made = True
-                print("Added DEVELOPMENT_TEAM to build settings")
-        
-        # Write back the modified content
-        with open('ios/Runner.xcodeproj/project.pbxproj', 'w') as f:
-            f.write(content)
-        
-        print("Xcode project file updated successfully")
-        print("Changes made:", changes_made)
-        EOF
-        
-        # Show what we changed
-        echo "=== After modification ==="
-        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "Still no DEVELOPMENT_TEAM found"
+        echo "=== Xcode project configuration verified ==="
         
     - name: Build iOS App
       env:
         DEVELOPER_TEAM: MNR5F55U3
-        CODE_SIGN_IDENTITY: "iPhone Developer"
-        PROVISIONING_PROFILE_SPECIFIER: "2a9681d5-cf75-4d72-9f01-7714f7020d15"
       run: |
+        echo "=== Building iOS app with automatic signing ==="
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
           --build-number=${{ github.run_number }} \
-          --export-method=development
+          --export-method=development \
+          --export-options-plist=ios/ExportOptions.plist
           
     - name: Upload IPA
       uses: actions/upload-artifact@v4
