@@ -5,6 +5,9 @@ A new Flutter project.
 ## Build Test
 Testing iOS build with fixed provisioning profile format.
 
+### Final Test
+Testing with binary format provisioning profile and corrected bundle identifier.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
