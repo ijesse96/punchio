@@ -73,6 +73,21 @@ jobs:
         
         echo "✅ Code signing setup completed"
         
+    - name: Debug iOS Project
+      run: |
+        echo "🔍 Debugging iOS project configuration..."
+        echo "📋 iOS project structure:"
+        ls -la ios/
+        echo ""
+        echo "📋 Xcode project settings:"
+        grep -n "DEVELOPMENT_TEAM\|PRODUCT_BUNDLE_IDENTIFIER\|CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj | head -10
+        echo ""
+        echo "📋 Export options:"
+        cat ios/ExportOptions.plist
+        echo ""
+        echo "📋 Podfile:"
+        head -20 ios/Podfile
+        
     - name: Build iOS App
       env:
         TEAM_ID: ${{ secrets.TEAM_ID }}
@@ -88,6 +103,7 @@ jobs:
         rm -rf build/
         
         # Build with automatic provisioning
+        echo "📱 Starting Xcode build..."
         xcodebuild -workspace Runner.xcworkspace \
           -scheme Runner \
           -configuration Release \
@@ -100,16 +116,21 @@ jobs:
           PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
           -allowProvisioningUpdates \
           -allowProvisioningDeviceRegistration \
-          archive 2>&1 | tee xcodebuild.log || {
-            echo "❌ Xcode build failed! Key errors:"
-            grep -i "error\|failed" xcodebuild.log | head -20
-            echo ""
-            echo "📋 Full xcodebuild log:"
-            cat xcodebuild.log
-            exit 1
-          }
-          
+          archive 2>&1 | tee xcodebuild.log
+        
+        # Check if build actually succeeded
+        if [ ! -d "build/Runner.xcarchive" ]; then
+          echo "❌ Archive was not created! Build failed."
+          echo "📋 Key errors from build log:"
+          grep -i "error\|failed" xcodebuild.log | head -20
+          echo ""
+          echo "📋 Full xcodebuild log:"
+          cat xcodebuild.log
+          exit 1
+        fi
+        
         echo "✅ Xcode build completed successfully!"
+        echo "📱 Archive created at: build/Runner.xcarchive"
         
         # Export IPA with automatic provisioning
         echo "🚀 Exporting IPA..."
@@ -118,15 +139,19 @@ jobs:
           -exportPath build/ipa \
           -exportOptionsPlist ExportOptions.plist \
           -allowProvisioningUpdates \
-          -allowProvisioningDeviceRegistration 2>&1 | tee export.log || {
-            echo "❌ IPA export failed! Key errors:"
-            grep -i "error\|failed" export.log | head -20
-            echo ""
-            echo "📋 Full export log:"
-            cat export.log
-            exit 1
-          }
-          
+          -allowProvisioningDeviceRegistration 2>&1 | tee export.log
+        
+        # Check if export actually succeeded
+        if [ ! -d "build/ipa" ] || [ ! -f "build/ipa"/*.ipa ]; then
+          echo "❌ IPA export failed! No IPA file created."
+          echo "📋 Key errors from export log:"
+          grep -i "error\|failed" export.log | head -20
+          echo ""
+          echo "📋 Full export log:"
+          cat export.log
+          exit 1
+        fi
+        
         echo "✅ IPA export completed successfully!"
         
         # List the generated IPA file
