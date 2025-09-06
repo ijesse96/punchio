@@ -131,12 +131,23 @@ jobs:
         xcodebuild -exportArchive \
           -archivePath build/Runner.xcarchive \
           -exportPath build/ipa \
-          -exportOptionsPlist ../ExportOptions.plist 2>&1 | tee export.log || {
+          -exportOptionsPlist ../ExportOptions.plist \
+          -allowProvisioningUpdates 2>&1 | tee export.log || {
             echo "❌ IPA export failed! Key errors:"
             grep -i "error\|failed" export.log | head -20
             echo ""
             echo "📋 Full export log saved to export.log"
-            exit 1
+            echo "🔄 Trying alternative export method..."
+            
+            # Try without provisioning updates
+            xcodebuild -exportArchive \
+              -archivePath build/Runner.xcarchive \
+              -exportPath build/ipa \
+              -exportOptionsPlist ../ExportOptions.plist 2>&1 | tee export2.log || {
+                echo "❌ Alternative export also failed!"
+                grep -i "error\|failed" export2.log | head -20
+                exit 1
+              }
           }
           
         echo "✅ IPA export completed successfully!"
