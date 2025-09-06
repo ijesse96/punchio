@@ -69,15 +69,15 @@ jobs:
         echo "   - Bundle ID: com.punchio.punchio"
         echo "   - Apple ID: $APPLE_ID"
         
-    - name: Build iOS IPA
+    - name: Build iOS App for TestFlight
       env:
         TEAM_ID: ${{ secrets.TEAM_ID }}
         APPLE_ID: ${{ secrets.APPLE_ID }}
         APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
-        echo "🚀 Building iOS IPA with code signing..."
+        echo "🚀 Building iOS app for TestFlight distribution..."
         
-        # Use Flutter build with code signing enabled
+        # Use Flutter build with automatic provisioning for app-store
         flutter build ipa \
           --release \
           --export-options-plist=ios/ExportOptions.plist \
@@ -91,16 +91,45 @@ jobs:
             exit 1
           }
           
-        echo "✅ Flutter IPA build completed successfully!"
+        echo "✅ Flutter build completed successfully!"
         
         # List the generated IPA file
-        echo "📱 Generated IPA file:"
+        echo "📱 Generated IPA file for TestFlight:"
         ls -la build/ios/ipa/*.ipa
         
-    - name: Upload IPA file
+    - name: Upload to TestFlight
+      env:
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      run: |
+        echo "🚀 Uploading to TestFlight..."
+        
+        # Upload to TestFlight using xcrun altool
+        xcrun altool --upload-app \
+          --type ios \
+          --file build/ios/ipa/*.ipa \
+          --username "$APPLE_ID" \
+          --password "$APPLE_PASSWORD" \
+          --team-id "$TEAM_ID" 2>&1 | tee testflight_upload.log || {
+            echo "❌ TestFlight upload failed! Key errors:"
+            grep -i "error\|failed" testflight_upload.log | head -20
+            echo ""
+            echo "📋 Full TestFlight upload log:"
+            cat testflight_upload.log
+            echo ""
+            echo "⚠️ Upload failed, but IPA file was still generated"
+            echo "You can manually upload the IPA file to TestFlight"
+            exit 1
+          }
+          
+        echo "✅ Successfully uploaded to TestFlight!"
+        echo "📱 Your app is now available in TestFlight for testing"
+        
+    - name: Upload IPA file as backup
       uses: actions/upload-artifact@v4
       with:
-        name: punchio-ipa
+        name: punchio-testflight-ipa
         path: build/ios/ipa/*.ipa
         retention-days: 30
         
