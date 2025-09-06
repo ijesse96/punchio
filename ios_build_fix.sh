@@ -1,35 +1,50 @@
 #!/bin/bash
 
 # iOS Build Fix Script for GitHub Actions
-# This script addresses the provisioning profile issue
+# This script fixes common iOS build issues in CI/CD environments
 
-echo "=== Fixing iOS Build Configuration ==="
+set -e
 
-# 1. Copy the provisioning profile to the correct location
-if [ -f "punchio.mobileprovision" ]; then
-    echo "Copying provisioning profile to iOS directory..."
-    cp punchio.mobileprovision ios/
-    echo "Provisioning profile copied successfully"
-else
-    echo "Warning: punchio.mobileprovision not found in root directory"
-fi
+echo "🔧 Fixing iOS build configuration for CI/CD..."
 
-# 2. Update Xcode project to use the provisioning profile
-echo "Updating Xcode project configuration..."
+# Navigate to iOS directory
+cd ios
 
-# Set the provisioning profile in the project
-PROVISIONING_PROFILE_NAME="punchio"
-PROJECT_FILE="ios/Runner.xcodeproj/project.pbxproj"
+# Clean previous builds
+echo "🧹 Cleaning previous builds..."
+rm -rf build/
+rm -rf Pods/
+rm -rf Podfile.lock
 
-# Add PROVISIONING_PROFILE_SPECIFIER to the build settings
-sed -i.bak 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Automatic;\
-				PROVISIONING_PROFILE_SPECIFIER = '"$PROVISIONING_PROFILE_NAME"';/g' "$PROJECT_FILE"
+# Update CocoaPods
+echo "📦 Updating CocoaPods..."
+pod install --repo-update
 
-echo "Xcode project updated with provisioning profile specifier"
+# Fix Xcode project configuration for CI
+echo "⚙️ Configuring Xcode project for CI..."
 
-# 3. Verify the configuration
-echo "=== Verifying Configuration ==="
-echo "Checking for PROVISIONING_PROFILE_SPECIFIER in project file:"
-grep -n "PROVISIONING_PROFILE_SPECIFIER" "$PROJECT_FILE" || echo "Not found - will use automatic signing"
+# Create a backup of the original project file
+cp Runner.xcodeproj/project.pbxproj Runner.xcodeproj/project.pbxproj.backup
 
-echo "=== Configuration Complete ==="
+# Fix bundle identifier - remove the team ID prefix
+sed -i '' 's/MNRC5F55U3\.com\.punchio\.punchio/com.punchio.punchio/g' Runner.xcodeproj/project.pbxproj
+
+# Set development team to empty for automatic signing
+sed -i '' 's/DEVELOPMENT_TEAM = MNR5F55U3;/DEVELOPMENT_TEAM = "";/g' Runner.xcodeproj/project.pbxproj
+
+# Ensure code signing style is automatic
+sed -i '' 's/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g' Runner.xcodeproj/project.pbxproj
+
+# Remove provisioning profile specifier
+sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = "";/g' Runner.xcodeproj/project.pbxproj
+
+echo "✅ iOS build configuration fixed!"
+echo "📋 Configuration summary:"
+echo "   - Bundle ID: com.punchio.punchio"
+echo "   - Code Signing: Automatic"
+echo "   - Development Team: (empty for CI)"
+echo "   - Provisioning Profile: (empty for CI)"
+
+cd ..
+
+echo "🚀 Ready to build iOS app!"
