@@ -1,4 +1,4 @@
-name: iOS IPA Build
+name: iOS Clean Build
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-ipa:
+  build-ios:
     runs-on: macos-latest
     
     steps:
@@ -41,96 +41,105 @@ jobs:
         
         if [ -z "${{ secrets.TEAM_ID }}" ]; then
           echo "❌ ERROR: TEAM_ID secret is not set!"
-          echo "Please add TEAM_ID secret to your repository settings"
           exit 1
         fi
         if [ -z "${{ secrets.APPLE_ID }}" ]; then
           echo "❌ ERROR: APPLE_ID secret is not set!"
-          echo "Please add APPLE_ID secret to your repository settings"
           exit 1
         fi
         if [ -z "${{ secrets.APPLE_PASSWORD }}" ]; then
           echo "❌ ERROR: APPLE_PASSWORD secret is not set!"
-          echo "Please add APPLE_PASSWORD secret to your repository settings"
           exit 1
         fi
         
         echo "✅ All required secrets are available"
         
-    - name: Setup Apple Developer Environment
+    - name: Setup Code Signing
       env:
         TEAM_ID: ${{ secrets.TEAM_ID }}
         APPLE_ID: ${{ secrets.APPLE_ID }}
         APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
-        echo "🔍 Setting up Apple Developer environment..."
-        echo "📋 Configuration:"
-        echo "   - Team ID: $TEAM_ID"
-        echo "   - Bundle ID: com.punchio.punchio"
-        echo "   - Apple ID: $APPLE_ID"
+        echo "🔐 Setting up code signing..."
         
-    - name: Build iOS App for TestFlight
+        # Create keychain for code signing
+        security create-keychain -p "" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "" build.keychain
+        security set-keychain-settings -t 3600 -u build.keychain
+        
+        # Set keychain search list
+        security list-keychains -d user -s build.keychain
+        
+        echo "✅ Code signing setup completed"
+        
+    - name: Build iOS App
       env:
         TEAM_ID: ${{ secrets.TEAM_ID }}
         APPLE_ID: ${{ secrets.APPLE_ID }}
         APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
-        echo "🚀 Building iOS app for TestFlight distribution..."
+        echo "🚀 Building iOS app with automatic code signing..."
         
-        # Use Flutter build with automatic provisioning for app-store
-        flutter build ipa \
-          --release \
-          --export-options-plist=ios/ExportOptions.plist \
-          --build-name=1.0.0 \
-          --build-number=1 2>&1 | tee flutter_build.log || {
-            echo "❌ Flutter build failed! Key errors:"
-            grep -i "error\|failed" flutter_build.log | head -20
+        # Use xcodebuild with automatic provisioning
+        cd ios
+        
+        # Clean previous builds
+        rm -rf build/
+        
+        # Build with automatic provisioning
+        xcodebuild -workspace Runner.xcworkspace \
+          -scheme Runner \
+          -configuration Release \
+          -destination generic/platform=iOS \
+          -archivePath build/Runner.xcarchive \
+          CODE_SIGN_IDENTITY="Apple Development" \
+          CODE_SIGNING_REQUIRED=YES \
+          CODE_SIGNING_ALLOWED=YES \
+          DEVELOPMENT_TEAM="$TEAM_ID" \
+          PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
+          -allowProvisioningUpdates \
+          -allowProvisioningDeviceRegistration \
+          archive 2>&1 | tee xcodebuild.log || {
+            echo "❌ Xcode build failed! Key errors:"
+            grep -i "error\|failed" xcodebuild.log | head -20
             echo ""
-            echo "📋 Full Flutter build log:"
-            cat flutter_build.log
+            echo "📋 Full xcodebuild log:"
+            cat xcodebuild.log
             exit 1
           }
           
-        echo "✅ Flutter build completed successfully!"
+        echo "✅ Xcode build completed successfully!"
+        
+        # Export IPA with automatic provisioning
+        echo "🚀 Exporting IPA..."
+        xcodebuild -exportArchive \
+          -archivePath build/Runner.xcarchive \
+          -exportPath build/ipa \
+          -exportOptionsPlist ExportOptions.plist \
+          -allowProvisioningUpdates \
+          -allowProvisioningDeviceRegistration 2>&1 | tee export.log || {
+            echo "❌ IPA export failed! Key errors:"
+            grep -i "error\|failed" export.log | head -20
+            echo ""
+            echo "📋 Full export log:"
+            cat export.log
+            exit 1
+          }
+          
+        echo "✅ IPA export completed successfully!"
         
         # List the generated IPA file
-        echo "📱 Generated IPA file for TestFlight:"
-        ls -la build/ios/ipa/*.ipa
+        echo "📱 Generated IPA file:"
+        ls -la build/ipa/*.ipa
         
-    - name: Upload to TestFlight
-      env:
-        TEAM_ID: ${{ secrets.TEAM_ID }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      run: |
-        echo "🚀 Uploading to TestFlight..."
+        cd ..
         
-        # Upload to TestFlight using xcrun altool
-        xcrun altool --upload-app \
-          --type ios \
-          --file build/ios/ipa/*.ipa \
-          --username "$APPLE_ID" \
-          --password "$APPLE_PASSWORD" \
-          --team-id "$TEAM_ID" 2>&1 | tee testflight_upload.log || {
-            echo "❌ TestFlight upload failed! Key errors:"
-            grep -i "error\|failed" testflight_upload.log | head -20
-            echo ""
-            echo "📋 Full TestFlight upload log:"
-            cat testflight_upload.log
-            echo ""
-            echo "⚠️ Upload failed, but IPA file was still generated"
-            echo "You can manually upload the IPA file to TestFlight"
-            exit 1
-          }
-          
-        echo "✅ Successfully uploaded to TestFlight!"
-        echo "📱 Your app is now available in TestFlight for testing"
-        
-    - name: Upload IPA file as backup
+    - name: Upload IPA file
       uses: actions/upload-artifact@v4
       with:
-        name: punchio-testflight-ipa
-        path: build/ios/ipa/*.ipa
+        name: punchio-ipa
+        path: ios/build/ipa/*.ipa
         retention-days: 30
         
     - name: Debug on failure
