@@ -123,6 +123,7 @@ jobs:
           CODE_SIGNING_ALLOWED=YES \
           DEVELOPMENT_TEAM="$TEAM_ID" \
           PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
+          -allowProvisioningUpdates \
           archive 2>&1 | tee xcodebuild.log || {
             echo "❌ Xcode build failed! Key errors:"
             grep -i "error\|failed" xcodebuild.log | head -20
@@ -138,7 +139,7 @@ jobs:
         xcodebuild -exportArchive \
           -archivePath build/Runner.xcarchive \
           -exportPath build/ipa \
-          -exportOptionsPlist ../ExportOptions.plist \
+          -exportOptionsPlist ExportOptions.plist \
           -allowProvisioningUpdates 2>&1 | tee export.log || {
             echo "❌ IPA export failed! Key errors:"
             grep -i "error\|failed" export.log | head -20
@@ -150,7 +151,7 @@ jobs:
             xcodebuild -exportArchive \
               -archivePath build/Runner.xcarchive \
               -exportPath build/ipa \
-              -exportOptionsPlist ../ExportOptions.plist 2>&1 | tee export2.log || {
+              -exportOptionsPlist ExportOptions.plist 2>&1 | tee export2.log || {
                 echo "❌ Alternative export also failed!"
                 grep -i "error\|failed" export2.log | head -20
                 exit 1
