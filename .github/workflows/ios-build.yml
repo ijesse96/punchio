@@ -111,7 +111,6 @@ jobs:
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
           --build-number=${{ github.run_number }} \
-          --export-method=development \
           --export-options-plist=ios/ExportOptions.plist
           
     - name: Upload IPA
