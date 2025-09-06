@@ -162,7 +162,7 @@ jobs:
       env:
         DEVELOPER_TEAM: MNR5F55U3
         CODE_SIGN_IDENTITY: "iPhone Developer"
-        PROVISIONING_PROFILE_SPECIFIER: "punchio Development"
+        PROVISIONING_PROFILE_SPECIFIER: "2a9681d5-cf75-4d72-9f01-7714f7020d15"
       run: |
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
