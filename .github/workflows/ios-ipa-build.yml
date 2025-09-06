@@ -32,6 +32,31 @@ jobs:
         pod install
         cd ..
         
+    - name: Verify GitHub Secrets
+      run: |
+        echo "🔍 Verifying GitHub secrets..."
+        echo "TEAM_ID secret exists: ${{ secrets.TEAM_ID != '' }}"
+        echo "APPLE_ID secret exists: ${{ secrets.APPLE_ID != '' }}"
+        echo "APPLE_PASSWORD secret exists: ${{ secrets.APPLE_PASSWORD != '' }}"
+        
+        if [ -z "${{ secrets.TEAM_ID }}" ]; then
+          echo "❌ ERROR: TEAM_ID secret is not set!"
+          echo "Please add TEAM_ID secret to your repository settings"
+          exit 1
+        fi
+        if [ -z "${{ secrets.APPLE_ID }}" ]; then
+          echo "❌ ERROR: APPLE_ID secret is not set!"
+          echo "Please add APPLE_ID secret to your repository settings"
+          exit 1
+        fi
+        if [ -z "${{ secrets.APPLE_PASSWORD }}" ]; then
+          echo "❌ ERROR: APPLE_PASSWORD secret is not set!"
+          echo "Please add APPLE_PASSWORD secret to your repository settings"
+          exit 1
+        fi
+        
+        echo "✅ All required secrets are available"
+        
     - name: Setup Apple Developer Environment
       env:
         TEAM_ID: ${{ secrets.TEAM_ID }}
@@ -39,25 +64,6 @@ jobs:
         APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
         echo "🔍 Setting up Apple Developer environment..."
-        
-        # Verify secrets are available
-        if [ -z "$TEAM_ID" ]; then
-          echo "❌ ERROR: TEAM_ID secret is not set!"
-          echo "Please add TEAM_ID secret to your repository settings"
-          exit 1
-        fi
-        if [ -z "$APPLE_ID" ]; then
-          echo "❌ ERROR: APPLE_ID secret is not set!"
-          echo "Please add APPLE_ID secret to your repository settings"
-          exit 1
-        fi
-        if [ -z "$APPLE_PASSWORD" ]; then
-          echo "❌ ERROR: APPLE_PASSWORD secret is not set!"
-          echo "Please add APPLE_PASSWORD secret to your repository settings"
-          exit 1
-        fi
-        
-        echo "✅ All required secrets are available"
         echo "📋 Configuration:"
         echo "   - Team ID: $TEAM_ID"
         echo "   - Bundle ID: com.punchio.punchio"
@@ -100,6 +106,10 @@ jobs:
         
     - name: Debug on failure
       if: failure()
+      env:
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
         echo "🔍 Debug information:"
         echo "📋 Flutter doctor:"
@@ -118,3 +128,8 @@ jobs:
         echo "TEAM_ID: ${TEAM_ID:-'NOT SET'}"
         echo "APPLE_ID: ${APPLE_ID:-'NOT SET'}"
         echo "APPLE_PASSWORD: ${APPLE_PASSWORD:+'SET'}"
+        echo ""
+        echo "📋 GitHub Secrets Status:"
+        echo "TEAM_ID secret exists: ${{ secrets.TEAM_ID != '' }}"
+        echo "APPLE_ID secret exists: ${{ secrets.APPLE_ID != '' }}"
+        echo "APPLE_PASSWORD secret exists: ${{ secrets.APPLE_PASSWORD != '' }}"
