@@ -73,17 +73,33 @@ jobs:
         
     - name: Configure Xcode Project
       run: |
-        # Directly modify the Xcode project file to set development team
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
-        # Set code signing style to automatic
-        sed -i '' 's/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g' ios/Runner.xcodeproj/project.pbxproj
+        # Use Python to modify the Xcode project file
+        python3 << 'EOF'
+        import re
+        
+        # Read the project file
+        with open('ios/Runner.xcodeproj/project.pbxproj', 'r') as f:
+            content = f.read()
+        
+        # Replace DEVELOPMENT_TEAM empty values
+        content = re.sub(r'DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = MNR5F55U3;', content)
+        content = re.sub(r'DEVELOPMENT_TEAM = "";', 'DEVELOPMENT_TEAM = MNR5F55U3;', content)
+        
+        # Set code signing style
+        content = re.sub(r'CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Automatic;', content)
+        
         # Set provisioning profile
-        sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "punchio Development";/g' ios/Runner.xcodeproj/project.pbxproj
-        # Also try different patterns
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
+        content = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = "";', 'PROVISIONING_PROFILE_SPECIFIER = "punchio Development";', content)
+        
+        # Write back the modified content
+        with open('ios/Runner.xcodeproj/project.pbxproj', 'w') as f:
+            f.write(content)
+        
+        print("Xcode project file updated successfully")
+        EOF
+        
         # Show what we changed
-        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj
+        grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
         
     - name: Build iOS App
       env:
