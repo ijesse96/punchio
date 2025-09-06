@@ -8,6 +8,9 @@ Testing iOS build with fixed provisioning profile format.
 ### Final Test
 Testing with binary format provisioning profile and corrected bundle identifier.
 
+### Binary Profile Fix Test
+Testing the updated workflow that properly handles binary provisioning profiles.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
