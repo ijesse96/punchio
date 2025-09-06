@@ -86,45 +86,32 @@ jobs:
       run: |
         echo "🚀 Building iOS app..."
         
-        # First build the iOS app
-        flutter build ios \
-          --release \
-          --no-codesign \
-          --verbose 2>&1 | tee build.log || {
-            echo "❌ Flutter build failed! Key errors:"
-            grep -i "error\|failed\|❌" build.log | head -20
-            echo ""
-            echo "🔍 Checking build directory contents..."
-            ls -la build/ || echo "No build directory found"
-            ls -la ios/build/ || echo "No ios/build directory found"
-            echo ""
-            echo "🔍 Checking Flutter doctor..."
-            flutter doctor -v
-            echo ""
-            echo "📋 Full error log saved to build.log"
-            exit 1
-          }
-          
-        echo "✅ Flutter build completed successfully!"
-        
-        # Now create IPA using xcodebuild
-        echo "🚀 Creating IPA archive..."
+        # Build iOS app using xcodebuild directly (more reliable)
+        echo "🚀 Building iOS app with xcodebuild..."
         cd ios
         
+        # Clean previous builds
+        rm -rf build/
+        
+        # Build the app directly with xcodebuild
         xcodebuild -workspace Runner.xcworkspace \
           -scheme Runner \
           -configuration Release \
           -destination generic/platform=iOS \
           -archivePath build/Runner.xcarchive \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
           archive 2>&1 | tee xcodebuild.log || {
-            echo "❌ Xcode archive failed! Key errors:"
+            echo "❌ Xcode build failed! Key errors:"
             grep -i "error\|failed" xcodebuild.log | head -20
             echo ""
             echo "📋 Full xcodebuild log saved to xcodebuild.log"
             exit 1
           }
           
-        echo "✅ Archive created successfully!"
+        echo "✅ Xcode build completed successfully!"
         
         # Export IPA
         echo "🚀 Exporting IPA..."
