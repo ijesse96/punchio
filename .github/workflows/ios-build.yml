@@ -86,11 +86,11 @@ jobs:
           exit 1
         fi
         
-        # Build iOS app with proper code signing using Apple Developer account
-        echo "🚀 Running: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist --verbose"
-        flutter build ipa \
+        # Build iOS app without code signing for CI (will create .app bundle)
+        echo "🚀 Running: flutter build ios --release --no-codesign --verbose"
+        flutter build ios \
           --release \
-          --export-options-plist=ios/ExportOptions.plist \
+          --no-codesign \
           --verbose || {
             echo "❌ Flutter build failed with exit code $?"
             echo "🔍 Checking build directory contents..."
@@ -116,20 +116,17 @@ jobs:
         # Clean build directory
         rm -rf build/
         
-        echo "🚀 Running xcodebuild with Apple Developer account..."
-        echo "🔍 Using Team ID: ${{ secrets.TEAM_ID }}"
-        # Build with xcodebuild using Apple Developer account credentials
+        echo "🚀 Running xcodebuild without code signing..."
+        # Build with xcodebuild without code signing (for CI environment)
         xcodebuild -workspace Runner.xcworkspace \
           -scheme Runner \
           -configuration Release \
           -destination generic/platform=iOS \
-          -allowProvisioningUpdates \
-          -allowProvisioningDeviceRegistration \
-          CODE_SIGN_STYLE=Automatic \
-          DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}" \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
           PRODUCT_BUNDLE_IDENTIFIER=com.punchio.punchio \
-          archive \
-          -archivePath Runner.xcarchive \
+          build \
           -verbose || {
             echo "❌ xcodebuild archive failed with exit code $?"
             echo "🔍 Checking for common issues..."
@@ -140,24 +137,10 @@ jobs:
             exit 1
           }
           
-        echo "✅ Archive created successfully, exporting IPA..."
-        # Export IPA from archive
-        xcodebuild -exportArchive \
-          -archivePath Runner.xcarchive \
-          -exportPath ./build \
-          -exportOptionsPlist ExportOptions.plist \
-          -allowProvisioningUpdates \
-          -verbose || {
-            echo "❌ Export failed with exit code $?"
-            echo "🔍 Checking archive contents..."
-            ls -la Runner.xcarchive/
-            exit 1
-          }
-          
-        echo "✅ IPA export completed successfully!"
+        echo "✅ Build completed successfully!"
         echo "🔍 Checking build output..."
         ls -la build/
-        find build/ -name "*.ipa" -type f
+        find build/ -name "*.app" -type d
           
         cd ..
         
@@ -167,8 +150,8 @@ jobs:
       with:
         name: ios-build-artifacts
         path: |
-          build/ios/ipa/*.ipa
-          ios/build/*.ipa
+          build/ios/Release-iphoneos/
+          ios/build/
         retention-days: 7
         
     - name: Upload logs on failure
