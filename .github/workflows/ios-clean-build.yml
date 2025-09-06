@@ -173,6 +173,13 @@ jobs:
         echo "✅ Xcode build completed successfully!"
         echo "📱 Archive created at: build/Runner.xcarchive"
         
+        # Re-authenticate before export
+        echo "🔑 Re-authenticating for export..."
+        xcrun altool --list-providers \
+          --username "$APPLE_ID" \
+          --password "$APPLE_PASSWORD" \
+          --team-id "$TEAM_ID" > /dev/null 2>&1 || echo "⚠️ Re-authentication failed, continuing..."
+        
         # Export IPA with automatic provisioning
         echo "🚀 Exporting IPA..."
         xcodebuild -exportArchive \
@@ -180,7 +187,8 @@ jobs:
           -exportPath build/ipa \
           -exportOptionsPlist ExportOptions.plist \
           -allowProvisioningUpdates \
-          -allowProvisioningDeviceRegistration 2>&1 | tee export.log
+          -allowProvisioningDeviceRegistration \
+          DEVELOPMENT_TEAM="$TEAM_ID" 2>&1 | tee export.log
         
         # Check if export actually succeeded
         if [ ! -d "build/ipa" ] || [ ! -f "build/ipa"/*.ipa ]; then
