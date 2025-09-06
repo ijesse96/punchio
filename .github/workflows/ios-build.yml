@@ -144,14 +144,19 @@ jobs:
       run: |
         echo "=== Building iOS app with automatic signing ==="
         
-        # Create a custom xcodebuild settings file to pass -allowProvisioningUpdates
-        cat > $RUNNER_TEMP/xcode_build_settings.sh << 'EOF'
-        #!/bin/bash
-        export EXTRA_XCODEBUILD_FLAGS="-allowProvisioningUpdates"
-        echo "Set EXTRA_XCODEBUILD_FLAGS to: $EXTRA_XCODEBUILD_FLAGS"
-        EOF
-        chmod +x $RUNNER_TEMP/xcode_build_settings.sh
-        source $RUNNER_TEMP/xcode_build_settings.sh
+        # Try a different approach - modify the Flutter build script directly
+        echo "=== Attempting to patch Flutter build process ==="
+        
+        # Find the Flutter build script
+        FLUTTER_BUILD_SCRIPT=$(find $FLUTTER_ROOT -name "xcode_backend.sh" | head -1)
+        echo "Found Flutter build script at: $FLUTTER_BUILD_SCRIPT"
+        
+        # Create a backup
+        cp "$FLUTTER_BUILD_SCRIPT" "$FLUTTER_BUILD_SCRIPT.backup"
+        
+        # Patch the script to add -allowProvisioningUpdates
+        sed -i '' 's/xcodebuild /xcodebuild -allowProvisioningUpdates /g' "$FLUTTER_BUILD_SCRIPT"
+        echo "Patched Flutter build script to include -allowProvisioningUpdates"
         
         # Build with verbose output to see what's happening
         flutter build ipa --release \
@@ -159,6 +164,10 @@ jobs:
           --build-number=${{ github.run_number }} \
           --export-options-plist=ios/ExportOptions.plist \
           --verbose
+        
+        # Restore the original script
+        mv "$FLUTTER_BUILD_SCRIPT.backup" "$FLUTTER_BUILD_SCRIPT"
+        echo "Restored original Flutter build script"
           
     - name: Upload IPA
       uses: actions/upload-artifact@v4
