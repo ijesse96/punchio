@@ -73,17 +73,34 @@ jobs:
         
     - name: Configure Xcode Project
       run: |
-        # Set the development team ID in the Xcode project
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
-        # Set code sign identity
-        sed -i '' 's/CODE_SIGN_IDENTITY = "";/CODE_SIGN_IDENTITY = "iPhone Developer";/g' ios/Runner.xcodeproj/project.pbxproj
-        # Set provisioning profile
-        sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "punchio Development";/g' ios/Runner.xcodeproj/project.pbxproj
-        # Also try setting empty values to our values
-        sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = MNR5F55U3;/g' ios/Runner.xcodeproj/project.pbxproj
-        sed -i '' 's/CODE_SIGN_IDENTITY = "";/CODE_SIGN_IDENTITY = "iPhone Developer";/g' ios/Runner.xcodeproj/project.pbxproj
-        sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "punchio Development";/g' ios/Runner.xcodeproj/project.pbxproj
+        # Create a custom export options plist
+        cat > ios/ExportOptions.plist << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>teamID</key>
+            <string>MNR5F55U3</string>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>signingCertificate</key>
+            <string>iPhone Developer</string>
+            <key>provisioningProfiles</key>
+            <dict>
+                <key>com.punchio.punchio</key>
+                <string>punchio Development</string>
+            </dict>
+        </dict>
+        </plist>
+        EOF
         
     - name: Build iOS App
       env:
@@ -94,7 +111,8 @@ jobs:
         flutter build ipa --release \
           --build-name=1.0.${{ github.run_number }} \
           --build-number=${{ github.run_number }} \
-          --export-method=development
+          --export-method=development \
+          --export-options-plist=ios/ExportOptions.plist
           
     - name: Upload IPA
       uses: actions/upload-artifact@v4
