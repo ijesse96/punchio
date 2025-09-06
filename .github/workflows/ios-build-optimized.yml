@@ -86,12 +86,12 @@ jobs:
       run: |
         echo "🚀 Building iOS app..."
         
-        # Build with proper error capture
-        flutter build ipa \
+        # First build the iOS app
+        flutter build ios \
           --release \
-          --export-options-plist=ios/ExportOptions.plist \
+          --no-codesign \
           --verbose 2>&1 | tee build.log || {
-            echo "❌ Build failed! Key errors:"
+            echo "❌ Flutter build failed! Key errors:"
             grep -i "error\|failed\|❌" build.log | head -20
             echo ""
             echo "🔍 Checking build directory contents..."
@@ -105,7 +105,42 @@ jobs:
             exit 1
           }
           
-        echo "✅ Build completed successfully!"
+        echo "✅ Flutter build completed successfully!"
+        
+        # Now create IPA using xcodebuild
+        echo "🚀 Creating IPA archive..."
+        cd ios
+        
+        xcodebuild -workspace Runner.xcworkspace \
+          -scheme Runner \
+          -configuration Release \
+          -destination generic/platform=iOS \
+          -archivePath build/Runner.xcarchive \
+          archive 2>&1 | tee xcodebuild.log || {
+            echo "❌ Xcode archive failed! Key errors:"
+            grep -i "error\|failed" xcodebuild.log | head -20
+            echo ""
+            echo "📋 Full xcodebuild log saved to xcodebuild.log"
+            exit 1
+          }
+          
+        echo "✅ Archive created successfully!"
+        
+        # Export IPA
+        echo "🚀 Exporting IPA..."
+        xcodebuild -exportArchive \
+          -archivePath build/Runner.xcarchive \
+          -exportPath build/ipa \
+          -exportOptionsPlist ../ExportOptions.plist 2>&1 | tee export.log || {
+            echo "❌ IPA export failed! Key errors:"
+            grep -i "error\|failed" export.log | head -20
+            echo ""
+            echo "📋 Full export log saved to export.log"
+            exit 1
+          }
+          
+        echo "✅ IPA export completed successfully!"
+        cd ..
         
     - name: Debug iOS Configuration (on failure)
       if: failure()
@@ -163,6 +198,7 @@ jobs:
         path: |
           build/ios/Release-iphoneos/
           ios/build/
+          ios/build/ipa/
         retention-days: 7
         
     - name: Upload error logs on failure
@@ -173,4 +209,5 @@ jobs:
         path: |
           build.log
           xcodebuild.log
+          export.log
         retention-days: 3

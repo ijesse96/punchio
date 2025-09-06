@@ -30,10 +30,10 @@ fi
 echo "✅ All required environment variables are set"
 
 # Build iOS app with proper code signing using Apple Developer account
-echo "🚀 Running: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist --verbose"
-flutter build ipa \
+echo "🚀 Running: flutter build ios --release --no-codesign --verbose"
+flutter build ios \
   --release \
-  --export-options-plist=ios/ExportOptions.plist \
+  --no-codesign \
   --verbose 2>&1 | tee build.log || {
     echo "❌ Flutter build failed with exit code $?"
     echo ""
@@ -51,4 +51,45 @@ flutter build ipa \
     exit 1
   }
 
-echo "✅ iOS build completed successfully!"
+echo "✅ Flutter build completed successfully!"
+
+# Now create IPA using xcodebuild
+echo "🚀 Creating IPA archive..."
+cd ios
+
+xcodebuild -workspace Runner.xcworkspace \
+  -scheme Runner \
+  -configuration Release \
+  -destination generic/platform=iOS \
+  -archivePath build/Runner.xcarchive \
+  archive 2>&1 | tee xcodebuild.log || {
+    echo "❌ Xcode archive failed with exit code $?"
+    echo ""
+    echo "🔍 Key errors from xcodebuild log:"
+    grep -i "error\|failed" xcodebuild.log | head -20
+    echo ""
+    echo "📋 Full xcodebuild log saved to xcodebuild.log"
+    exit 1
+  }
+
+echo "✅ Archive created successfully!"
+
+# Export IPA
+echo "🚀 Exporting IPA..."
+xcodebuild -exportArchive \
+  -archivePath build/Runner.xcarchive \
+  -exportPath build/ipa \
+  -exportOptionsPlist ../ExportOptions.plist 2>&1 | tee export.log || {
+    echo "❌ IPA export failed with exit code $?"
+    echo ""
+    echo "🔍 Key errors from export log:"
+    grep -i "error\|failed" export.log | head -20
+    echo ""
+    echo "📋 Full export log saved to export.log"
+    exit 1
+  }
+
+echo "✅ IPA export completed successfully!"
+cd ..
+
+echo "✅ iOS build and IPA creation completed successfully!"
