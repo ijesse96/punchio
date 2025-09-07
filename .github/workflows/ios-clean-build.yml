@@ -90,10 +90,10 @@ jobs:
       env:
         IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
 
-    - name: Import key+cert into temp keychain (PKCS#8)
+    - name: Import key+cert into temp keychain (robust)
       shell: bash
       run: |
-        set -euo pipefail
+        set -eo pipefail
 
         KEYCHAIN_NAME=build.keychain
         KEYCHAIN_PATH="$HOME/Library/Keychains/${KEYCHAIN_NAME}-db"
@@ -103,16 +103,18 @@ jobs:
         security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
         security unlock-keychain -p "" "$KEYCHAIN_NAME"
 
-        # Convert the private key to explicit PKCS#8 (no encryption)
-        # (signing.key was extracted earlier from the P12)
-        openssl pkcs8 -topk8 -nocrypt -in signing.key -out signing_pkcs8.pem
+        # Sanity check files from previous step
+        echo "📦 Files present:" && ls -l signing.* || true
 
-        # Import cert (PEM) and private key (PKCS8) into our keychain
-        security import signing.cer       -k "$KEYCHAIN_PATH" -A -t cert -f pem     -T /usr/bin/codesign -T /usr/bin/security
-        security import signing_pkcs8.pem -k "$KEYCHAIN_PATH" -A -t priv -f pkcs8   -T /usr/bin/codesign -T /usr/bin/security
+        # Convert the private key to PKCS#1 ("openssl" format) — most reliable for `security import`
+        openssl rsa -in signing.key -out signing_rsa.key
 
-        # Make this keychain active
-        security list-keychains -s "$KEYCHAIN_PATH"
+        # Import certificate (PEM sequence) and private key (OpenSSL/PKCS#1) into our keychain
+        security import signing.cer     -k "$KEYCHAIN_PATH" -A -t cert -f pemseq -T /usr/bin/codesign -T /usr/bin/security
+        security import signing_rsa.key -k "$KEYCHAIN_PATH" -A -t priv -f openssl -T /usr/bin/codesign -T /usr/bin/security
+
+        # Make this keychain active for the build
+        security list-keychains -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db"
         security default-keychain -s "$KEYCHAIN_PATH"
         security unlock-keychain -p "" "$KEYCHAIN_NAME"
 
