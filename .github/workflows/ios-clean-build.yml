@@ -180,6 +180,21 @@ jobs:
         echo "📋 Podfile:"
         head -20 ios/Podfile
         
+    - name: Force Team & Bundle ID in Xcode project
+      shell: bash
+      run: |
+        set -eo pipefail
+        PBX=ios/Runner.xcodeproj/project.pbxproj
+        # Set TEAM everywhere (Runner + any configs)
+        sed -i '' -E "s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = $IOS_TEAM_ID;/g" "$PBX"
+        # Ensure bundle id is correct
+        sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = $IOS_BUNDLE_ID;/g" "$PBX"
+        # Optional: flip to Manual to align with your ExportOptions (prevents "No Team Found" edge)
+        sed -i '' -E "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g" "$PBX"
+      env:
+        IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+
     - name: Build IPA (Release, manual signing)
       shell: bash
       run: |
