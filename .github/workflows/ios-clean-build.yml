@@ -128,13 +128,27 @@ jobs:
             -exportOptionsPlist ios/ExportOptions.plist
           ls -lah "$EXPORT_DIR"
 
-      - name: Verify IPA provisioning profile
+      - name: Check IPA identifiers (bundle id / team / profile name)
         shell: bash
         run: |
           set -euo pipefail
-          unzip -p build/ios/ipa/*.ipa Payload/*.app/embedded.mobileprovision > embedded.plist
-          /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' embedded.plist
-          # Expect: TEAMID.com.punchio.punchio
+          IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+
+          # 1) Decode the embedded provisioning profile to a real plist
+          unzip -p "$IPA" "Payload/*.app/embedded.mobileprovision" > embedded.mobileprovision
+          security cms -D -i embedded.mobileprovision -o embedded.plist
+
+          echo "application-identifier (TEAMID.bundle):"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' embedded.plist || true
+
+          echo "profile name:"
+          /usr/libexec/PlistBuddy -c 'Print :Name' embedded.plist || true
+
+          # 2) Also print CFBundleIdentifier from the app's Info.plist (quick sanity check)
+          unzip -o "$IPA" "Payload/*.app/Info.plist" -d ipa_tmp >/dev/null
+          INFO_PLIST=$(echo ipa_tmp/Payload/*.app/Info.plist)
+          echo "CFBundleIdentifier:"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST" || true
 
       - name: Validate App Store Connect .p8
         shell: bash
