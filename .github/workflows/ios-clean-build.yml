@@ -195,7 +195,7 @@ jobs:
         IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
         IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
-    - name: Archive with xcodebuild (Automatic signing at archive time)
+    - name: Archive with xcodebuild (Automatic at archive time)
       shell: bash
       run: |
         set -eo pipefail
@@ -212,11 +212,10 @@ jobs:
           DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
           PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
           CODE_SIGN_STYLE=Automatic \
-          CODE_SIGN_IDENTITY="Apple Distribution" \
           OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
-        echo "🔎 Archive created. Checking Team & Signing:"
-        plutil -p "$ARCHIVE_PATH/Info.plist" | grep -E '"Team"|SigningIdentity|ApplicationProperties' -n || true
+        echo "🔎 Archive Info (Team present?):"
+        plutil -p "$ARCHIVE_PATH/Info.plist" | grep -E '"Team"|ApplicationProperties' -n || true
       env:
         IOS_TEAM_ID:   ${{ secrets.IOS_TEAM_ID }}
         IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
@@ -233,8 +232,7 @@ jobs:
           -exportPath "$EXPORT_DIR" \
           -exportOptionsPlist ios/ExportOptions.plist
 
-        echo "📦 Exported files:"
-        ls -lah "$EXPORT_DIR"
+        echo "📦 Exported files:" && ls -lah "$EXPORT_DIR"
         
     - name: Upload IPA file
       uses: actions/upload-artifact@v4
