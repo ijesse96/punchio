@@ -180,6 +180,16 @@ jobs:
         echo "📋 Podfile:"
         head -20 ios/Podfile
         
+    - name: Ensure ExportOptions has team & new method
+      shell: bash
+      run: |
+        set -euo pipefail
+        P=ios/ExportOptions.plist
+        /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$P"
+        /usr/libexec/PlistBuddy -c "Set :teamID $IOS_TEAM_ID" "$P"       2>/dev/null || /usr/libexec/PlistBuddy -c "Add :teamID string $IOS_TEAM_ID" "$P"
+      env:
+        IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+
     - name: Archive (Team comes from project; no overrides)
       shell: bash
       run: |
@@ -196,29 +206,7 @@ jobs:
           clean archive \
           OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
-        echo "🔎 Archive Info pre-check:"
-        /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties' "$ARCHIVE_PATH/Info.plist" || echo "(no ApplicationProperties)"
-
-    - name: Ensure Team exists in archive Info.plist
-      shell: bash
-      env:
-        IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-      run: |
-        set -euo pipefail
-        ARCHIVE_INFO="build/ios/archive/Runner.xcarchive/Info.plist"
-
-        # Guarantee ApplicationProperties dict exists
-        /usr/libexec/PlistBuddy -c 'Add :ApplicationProperties dict' "$ARCHIVE_INFO" 2>/dev/null || true
-
-        # If Team missing, add it; if present, set it (idempotent)
-        if /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$ARCHIVE_INFO" >/dev/null 2>&1; then
-          /usr/libexec/PlistBuddy -c "Set :ApplicationProperties:Team $IOS_TEAM_ID" "$ARCHIVE_INFO"
-        else
-          /usr/libexec/PlistBuddy -c "Add :ApplicationProperties:Team string $IOS_TEAM_ID" "$ARCHIVE_INFO"
-        fi
-
-        echo "✅ Team now in archive:"
-        /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$ARCHIVE_INFO"
+        echo "🔎 Archive completed successfully"
 
     - name: Export IPA from archive
       shell: bash

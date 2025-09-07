@@ -3,9 +3,16 @@
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>app-store</string>
+    <string>app-store-connect</string>
     <key>signingStyle</key>
     <string>manual</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.punchio.punchio</key>
+        <string>Punchio App Store</string>
+    </dict>
+    <key>teamID</key>
+    <string>YOURTEAMID</string>
     <key>compileBitcode</key>
     <false/>
     <key>stripSwiftSymbols</key>
@@ -16,10 +23,5 @@
     <string>export</string>
     <key>manageAppVersionAndBuildNumber</key>
     <false/>
-    <key>provisioningProfiles</key>
-    <dict>
-        <key>com.punchio.punchio</key>
-        <string>Punchio App Store</string>
-    </dict>
 </dict>
 </plist>
