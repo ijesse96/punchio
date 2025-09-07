@@ -181,9 +181,41 @@ jobs:
         head -20 ios/Podfile
         
     - name: Build IPA (Release, manual signing)
+      shell: bash
       run: |
-        /usr/libexec/PlistBuddy -c "Set :CFBundleName '${APP_DISPLAY_NAME:-Punchio}'" ios/Runner/Info.plist
+        set -eo pipefail
+
+        # Build via Flutter (does archive + export)
         flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+
+        echo "📦 After flutter build, contents of build/ios:"
+        ls -lah build/ios || true
+        echo "📦 Contents of build/ios/ipa (if any):"
+        ls -lah build/ios/ipa || true
+        echo "📦 Contents of build/ios/archive (if any):"
+        ls -lah build/ios/archive || true
+
+        # If Flutter didn't drop an IPA, try a manual export from the archive:
+        if ! compgen -G "build/ios/ipa/*.ipa" > /dev/null; then
+          echo "⚠️ No IPA found. Attempting manual export from xcarchive…"
+          if [ -d "build/ios/archive/Runner.xcarchive" ]; then
+            xcodebuild -exportArchive \
+              -archivePath build/ios/archive/Runner.xcarchive \
+              -exportPath build/ios/ipa \
+              -exportOptionsPlist ios/ExportOptions.plist
+            echo "📦 After manual export, contents of build/ios/ipa:"
+            ls -lah build/ios/ipa || true
+          else
+            echo "❌ No xcarchive found either; aborting."
+            exit 1
+          fi
+        fi
+
+        # Hard fail if we STILL don't have an IPA
+        if ! compgen -G "build/ios/ipa/*.ipa" > /dev/null; then
+          echo "❌ Export did not produce an IPA. Check the xcodebuild export logs above."
+          exit 1
+        fi
       env:
         APP_DISPLAY_NAME: ${{ secrets.APP_DISPLAY_NAME }}
         
@@ -191,7 +223,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: punchio-ipa
-        path: build/ios/ipa/*.ipa
+        path: |
+          build/**/*.ipa
         retention-days: 30
         
     - name: Debug on failure
