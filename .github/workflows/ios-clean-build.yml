@@ -90,23 +90,34 @@ jobs:
       env:
         IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
 
-    - name: Import key+cert into temp keychain
+    - name: Import key+cert into temp keychain (PKCS#8)
       shell: bash
       run: |
-        security create-keychain -p "" build.keychain
-        security set-keychain-settings -lut 21600 build.keychain
-        security unlock-keychain -p "" build.keychain
+        set -euo pipefail
 
-        # Import cert and private key (PEM)
-        security import signing.cer -k build.keychain -A -t cert -f pemseq -T /usr/bin/codesign -T /usr/bin/security
-        security import signing.key -k build.keychain -A -t priv -f pem    -T /usr/bin/codesign -T /usr/bin/security
+        KEYCHAIN_NAME=build.keychain
+        KEYCHAIN_PATH="$HOME/Library/Keychains/${KEYCHAIN_NAME}-db"
 
-        # Make this keychain active for the build
-        security list-keychains -s build.keychain $(security list-keychains | sed 's/ *"//g')
-        security default-keychain -s build.keychain
+        # Create & unlock keychain
+        security create-keychain -p "" "$KEYCHAIN_NAME"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
+        security unlock-keychain -p "" "$KEYCHAIN_NAME"
 
-        # Allow codesign/xcodebuild to use the key non-interactively
-        security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+        # Convert the private key to explicit PKCS#8 (no encryption)
+        # (signing.key was extracted earlier from the P12)
+        openssl pkcs8 -topk8 -nocrypt -in signing.key -out signing_pkcs8.pem
+
+        # Import cert (PEM) and private key (PKCS8) into our keychain
+        security import signing.cer       -k "$KEYCHAIN_PATH" -A -t cert -f pem     -T /usr/bin/codesign -T /usr/bin/security
+        security import signing_pkcs8.pem -k "$KEYCHAIN_PATH" -A -t priv -f pkcs8   -T /usr/bin/codesign -T /usr/bin/security
+
+        # Make this keychain active
+        security list-keychains -s "$KEYCHAIN_PATH"
+        security default-keychain -s "$KEYCHAIN_PATH"
+        security unlock-keychain -p "" "$KEYCHAIN_NAME"
+
+        # Allow non-interactive codesign access
+        security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
 
         echo "🔑 Identities now available:"
         security find-identity -v -p codesigning || true
@@ -116,6 +127,16 @@ jobs:
       run: |
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
         cp Punchio.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
+
+    - name: Inspect signing setup
+      shell: bash
+      run: |
+        echo "🔑 Identities:"
+        security find-identity -v -p codesigning || true
+
+        echo "📄 Profile app id:"
+        security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision -o profile.plist
+        /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' profile.plist || true
 
     - name: Verify signing material
       run: |
