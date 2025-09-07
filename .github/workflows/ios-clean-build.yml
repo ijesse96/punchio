@@ -137,22 +137,27 @@ jobs:
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: Upload IPA to TestFlight
+      - name: Upload IPA with Apple Transporter
+        shell: bash
         run: |
-          gem install fastlane -N
-          echo "${ASC_KEY_P8_BASE64}" | base64 --decode > ./asc_key.p8
-          cat > api_key.json <<'JSON'
-          {
-            "key_id": "${{ secrets.ASC_KEY_ID }}",
-            "issuer_id": "${{ secrets.ASC_ISSUER_ID }}",
-            "key": "./asc_key.p8",
-            "in_house": false
-          }
-          JSON
-          IPA_PATH=$(ls build/ios/ipa/*.ipa | head -n 1)
-          fastlane pilot upload --api_key_path api_key.json -i "$IPA_PATH" --skip_waiting_for_build_processing true
+          set -euo pipefail
+
+          # Put the API key where Transporter will look for it
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "${ASC_KEY_P8_BASE64}" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+          IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+
+          # Upload using App Store Connect API key
+          xcrun iTMSTransporter -m upload \
+            -assetFile "$IPA" \
+            -apiKey "${ASC_KEY_ID}" \
+            -apiIssuer "${ASC_ISSUER_ID}" \
+            -v informational
         env:
-          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          ASC_KEY_ID:        ${{ secrets.ASC_KEY_ID }}        # e.g. R42R6KGJ9G
+          ASC_ISSUER_ID:     ${{ secrets.ASC_ISSUER_ID }}     # GUID from App Store Connect
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }} # base64 of the .p8 file
 
       - uses: actions/upload-artifact@v4
         with:
