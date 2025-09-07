@@ -92,6 +92,11 @@ jobs:
         env:
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
 
+      - name: Bump iOS build number to GitHub run #
+        shell: bash
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" ios/Runner/Info.plist
+
       # --- Build archive with Automatic signing (Team is in project); no identity/profile overrides ---
       - name: Archive (Runner)
         shell: bash
@@ -122,6 +127,23 @@ jobs:
             -exportPath "$EXPORT_DIR" \
             -exportOptionsPlist ios/ExportOptions.plist
           ls -lah "$EXPORT_DIR"
+
+      - name: Upload IPA to TestFlight
+        run: |
+          gem install fastlane -N
+          echo "${ASC_KEY_P8_BASE64}" | base64 --decode > ./asc_key.p8
+          cat > api_key.json <<'JSON'
+          {
+            "key_id": "${{ secrets.ASC_KEY_ID }}",
+            "issuer_id": "${{ secrets.ASC_ISSUER_ID }}",
+            "key": "./asc_key.p8",
+            "in_house": false
+          }
+          JSON
+          IPA_PATH=$(ls build/ios/ipa/*.ipa | head -n 1)
+          fastlane pilot upload --api_key_path api_key.json -i "$IPA_PATH" --skip_waiting_for_build_processing true
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
       - uses: actions/upload-artifact@v4
         with:
