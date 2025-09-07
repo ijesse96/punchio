@@ -180,32 +180,58 @@ jobs:
         echo "📋 Podfile:"
         head -20 ios/Podfile
         
-    - name: Bake Team & Bundle into Runner project (not Pods)
+    - name: Install ruby helper for Xcodeproj
+      run: gem install xcodeproj -N
+
+    - name: Write Team/Bundle into Runner.xcodeproj
       shell: bash
-      run: |
-        set -eo pipefail
-        PBX=ios/Runner.xcodeproj/project.pbxproj
-
-        # Force DEVELOPMENT_TEAM and BUNDLE ID in Runner project
-        /usr/bin/sed -i '' -E "s/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = $IOS_TEAM_ID;/g" "$PBX"
-        /usr/bin/sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = $IOS_BUNDLE_ID;/g" "$PBX"
-
-        # Make sure Runner uses Automatic signing (export will map the profile)
-        /usr/bin/sed -i '' -E "s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g" "$PBX"
-
-        # Remove any lingering explicit profile/identity lines from Runner (rare but safe)
-        /usr/bin/sed -i '' -E "s/PROVISIONING_PROFILE_SPECIFIER = [^;]+;//g" "$PBX"
-        /usr/bin/sed -i '' -E "s/CODE_SIGN_IDENTITY = [^;]+;//g" "$PBX"
-
-        echo "✅ Patched Runner.xcodeproj for Team ${IOS_TEAM_ID} & ${IOS_BUNDLE_ID}"
       env:
-        IOS_TEAM_ID:   ${{ secrets.IOS_TEAM_ID }}
+        IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
         IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+      run: |
+        set -euo pipefail
+        cat > set_team.rb <<'RUBY'
+        require 'xcodeproj'
+        project_path = 'ios/Runner.xcodeproj'
+        team   = ENV['IOS_TEAM_ID']
+        bundle = ENV['IOS_BUNDLE_ID']
 
-    - name: Archive with xcodebuild (Automatic at archive time)
+        proj = Xcodeproj::Project.open(project_path)
+
+        # Find the Runner target
+        runner = proj.targets.find { |t| t.name == 'Runner' }
+        raise "Runner target not found" unless runner
+
+        # Ensure Team & Bundle are set on Runner target build settings (Debug/Release)
+        runner.build_configurations.each do |cfg|
+          cfg.build_settings['DEVELOPMENT_TEAM'] = team
+          cfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = bundle
+          cfg.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
+          cfg.build_settings.delete('PROVISIONING_PROFILE_SPECIFIER')
+          cfg.build_settings.delete('CODE_SIGN_IDENTITY')
+        end
+
+        # Also set Team at the project level (helps Xcode embed Team in archive metadata)
+        proj.build_configurations.each do |cfg|
+          cfg.build_settings['DEVELOPMENT_TEAM'] = team
+        end
+
+        # TargetAttributes → DevelopmentTeam (this is what Xcode's Signing UI writes)
+        proj.root_object.attributes['TargetAttributes'] ||= {}
+        attrs = proj.root_object.attributes['TargetAttributes']
+        attrs[runner.uuid] ||= {}
+        attrs[runner.uuid]['DevelopmentTeam'] = team
+
+        proj.save
+        RUBY
+        ruby set_team.rb
+
+        echo "✅ Team & bundle written into ios/Runner.xcodeproj"
+
+    - name: Archive with xcodebuild (Team now in project)
       shell: bash
       run: |
-        set -eo pipefail
+        set -euo pipefail
         ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
         KEYCHAIN_PATH="$HOME/Library/Keychains/build.keychain-db"
 
@@ -218,26 +244,19 @@ jobs:
           clean archive \
           OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
-        echo "🔎 Archive Info (Team present?):"
-        /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$ARCHIVE_PATH/Info.plist" || echo "❌ No Team key found"
+        echo "🔎 Team in archive now?"
+        /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$ARCHIVE_PATH/Info.plist"
 
-        # (optional) show app id from the profile we installed
-        security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision -o profile.plist
-        /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' profile.plist || true
-
-    - name: Export IPA from archive
+    - name: Export IPA
       shell: bash
       run: |
-        set -eo pipefail
-        EXPORT_DIR="build/ios/ipa"
-        mkdir -p "$EXPORT_DIR"
-
+        set -euo pipefail
+        EXPORT_DIR="build/ios/ipa"; mkdir -p "$EXPORT_DIR"
         xcodebuild -exportArchive \
           -archivePath build/ios/archive/Runner.xcarchive \
           -exportPath "$EXPORT_DIR" \
           -exportOptionsPlist ios/ExportOptions.plist
-
-        echo "📦 Exported files:" && ls -lah "$EXPORT_DIR"
+        ls -lah "$EXPORT_DIR"
         
     - name: Upload IPA file
       uses: actions/upload-artifact@v4
