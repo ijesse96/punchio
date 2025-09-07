@@ -180,20 +180,36 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: App visibility probe
+      - name: App Store Connect visibility probe (verbose)
         shell: bash
         run: |
           set -euo pipefail
+          # Use the JWT you already generated earlier in the job
           TOKEN=$(cat jwt.txt)
-          curl -sfS "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=${IOS_BUNDLE_ID}" \
-            -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" \
-            | python3 - <<'PY'
-          import sys,json
-          j=json.load(sys.stdin); items=j.get("data",[])
-          print("apps found:", len(items))
-          assert items, "❌ No app record for this bundle id is visible to this API key."
-          print("✅ App id:", items[0]["id"])
-          PY
+          URL="https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=${IOS_BUNDLE_ID}"
+          echo "GET $URL"
+
+          # Show headers and body even on non-200
+          curl -sS -D headers.txt -o resp.json -w 'HTTP_CODE=%{http_code}\n' \
+            -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" "$URL" || true
+
+          echo "----- HEADERS -----"
+          cat headers.txt || true
+          echo "----- BODY (first 500 bytes) -----"
+          head -c 500 resp.json; echo
+          echo "----- PARSE -----"
+          python3 - <<'PY' || true
+import json, sys
+try:
+  with open('resp.json','rb') as f: data=f.read()
+  if not data.strip():
+    print("Empty response body"); sys.exit(3)
+  j=json.loads(data)
+  print("apps found:", len(j.get("data",[])))
+  if not j.get("data"): sys.exit(2)
+except Exception as e:
+  print("JSON parse error:", e); sys.exit(4)
+PY
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
