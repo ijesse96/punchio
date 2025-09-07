@@ -1,288 +1,130 @@
 name: iOS Clean Build
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   push:
     branches: [ main ]
 
 jobs:
   build-ios:
     runs-on: macos-14
-    
+    env:
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.24.0'
-        channel: 'stable'
-        
-    - name: Install dependencies
-      run: flutter pub get
-      
-    - name: Setup iOS build environment
-      run: |
-        # Install CocoaPods
-        sudo gem install cocoapods --quiet
-        
-        # Navigate to iOS directory and install pods
-        cd ios
-        pod install
-        cd ..
-        
-    - name: Verify GitHub Secrets
-      run: |
-        echo "🔍 Verifying GitHub secrets..."
-        echo "IOS_CERT_P12_BASE64 secret exists: ${{ secrets.IOS_CERT_P12_BASE64 != '' }}"
-        echo "IOS_PROFILE_BASE64 secret exists: ${{ secrets.IOS_PROFILE_BASE64 != '' }}"
-        echo "IOS_CERT_PASSWORD secret exists: ${{ secrets.IOS_CERT_PASSWORD != '' }}"
-        echo "IOS_TEAM_ID secret exists: ${{ secrets.IOS_TEAM_ID != '' }}"
-        echo "IOS_BUNDLE_ID secret exists: ${{ secrets.IOS_BUNDLE_ID != '' }}"
-        echo "APPLE_ID secret exists: ${{ secrets.APPLE_ID != '' }}"
-        echo "APPLE_PASSWORD secret exists: ${{ secrets.APPLE_PASSWORD != '' }}"
-        
-        if [ -z "${{ secrets.IOS_CERT_P12_BASE64 }}" ]; then
-          echo "❌ ERROR: IOS_CERT_P12_BASE64 secret is not set!"
-          exit 1
-        fi
-        if [ -z "${{ secrets.IOS_PROFILE_BASE64 }}" ]; then
-          echo "❌ ERROR: IOS_PROFILE_BASE64 secret is not set!"
-          exit 1
-        fi
-        if [ -z "${{ secrets.IOS_CERT_PASSWORD }}" ]; then
-          echo "❌ ERROR: IOS_CERT_PASSWORD secret is not set!"
-          exit 1
-        fi
-        if [ -z "${{ secrets.IOS_TEAM_ID }}" ]; then
-          echo "❌ ERROR: IOS_TEAM_ID secret is not set!"
-          exit 1
-        fi
-        if [ -z "${{ secrets.IOS_BUNDLE_ID }}" ]; then
-          echo "❌ ERROR: IOS_BUNDLE_ID secret is not set!"
-          exit 1
-        fi
-        
-        echo "✅ All required secrets are available"
-        
-    - name: Decode signing files
-      shell: bash
-      run: |
-        echo "$IOS_CERT_P12_BASE64" | base64 --decode > cert.p12
-        echo "$IOS_PROFILE_BASE64"   | base64 --decode > Punchio.mobileprovision
-      env:
-        IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
-        IOS_PROFILE_BASE64:  ${{ secrets.IOS_PROFILE_BASE64 }}
+      - uses: actions/checkout@v4
 
-    - name: Extract key and cert from P12
-      shell: bash
-      run: |
-        # Convert p12 to a flat PEM (contains both cert and private key)
-        openssl pkcs12 -in cert.p12 -passin pass:"$IOS_CERT_PASSWORD" -nodes -out signing.pem
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
 
-        # Split PEM into separate files
-        awk 'BEGIN{p=0}/-----BEGIN PRIVATE KEY-----/{p=1} p; /-----END PRIVATE KEY-----/{print; exit}' signing.pem > signing.key
-        awk 'BEGIN{p=0}/-----BEGIN CERTIFICATE-----/{p=1} p; /-----END CERTIFICATE-----/{print; exit}' signing.pem > signing.cer
+      - name: Flutter deps
+        run: flutter pub get
 
-        # Quick sanity check
-        test -s signing.key && test -s signing.cer || { echo "Missing key/cert after extraction"; exit 1; }
-      env:
-        IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+      - name: CocoaPods
+        run: |
+          gem install cocoapods -N
+          cd ios
+          pod repo update
+          pod install
 
-    - name: Import key+cert into temp keychain (robust)
-      shell: bash
-      run: |
-        set -eo pipefail
+      # --- Signing material: decode + import into temp keychain ---
+      - name: Decode signing files
+        shell: bash
+        run: |
+          set -eo pipefail
+          echo "$IOS_CERT_P12_BASE64" | base64 --decode > cert.p12
+          echo "$IOS_PROFILE_BASE64"   | base64 --decode > Punchio.mobileprovision
+        env:
+          IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          IOS_PROFILE_BASE64:  ${{ secrets.IOS_PROFILE_BASE64 }}
 
-        KEYCHAIN_NAME=build.keychain
-        KEYCHAIN_PATH="$HOME/Library/Keychains/${KEYCHAIN_NAME}-db"
+      - name: Extract key and cert from P12
+        shell: bash
+        run: |
+          set -eo pipefail
+          openssl pkcs12 -in cert.p12 -passin pass:"$IOS_CERT_PASSWORD" -nodes -out signing.pem
+          awk 'BEGIN{p=0}/-----BEGIN PRIVATE KEY-----/{p=1} p; /-----END PRIVATE KEY-----/{print; exit}' signing.pem > signing.key
+          awk 'BEGIN{p=0}/-----BEGIN CERTIFICATE-----/{p=1} p; /-----END CERTIFICATE-----/{print; exit}' signing.pem > signing.cer
+          # Convert private key to PKCS#1 for security import
+          openssl rsa -in signing.key -out signing_rsa.key
+        env:
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
 
-        # Create & unlock keychain
-        security create-keychain -p "" "$KEYCHAIN_NAME"
-        security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
-        security unlock-keychain -p "" "$KEYCHAIN_NAME"
+      - name: Import key+cert into temp keychain
+        shell: bash
+        run: |
+          set -eo pipefail
+          KEYCHAIN_NAME=build.keychain
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${KEYCHAIN_NAME}-db"
 
-        # Sanity check files from previous step
-        echo "📦 Files present:" && ls -l signing.* || true
+          security create-keychain -p "" "$KEYCHAIN_NAME"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
+          security unlock-keychain -p "" "$KEYCHAIN_NAME"
 
-        # Convert the private key to PKCS#1 ("openssl" format) — most reliable for `security import`
-        openssl rsa -in signing.key -out signing_rsa.key
+          security import signing.cer     -k "$KEYCHAIN_PATH" -A -t cert -f pemseq  -T /usr/bin/codesign -T /usr/bin/security
+          security import signing_rsa.key -k "$KEYCHAIN_PATH" -A -t priv -f openssl -T /usr/bin/codesign -T /usr/bin/security
 
-        # Import certificate (PEM sequence) and private key (OpenSSL/PKCS#1) into our keychain
-        security import signing.cer     -k "$KEYCHAIN_PATH" -A -t cert -f pemseq -T /usr/bin/codesign -T /usr/bin/security
-        security import signing_rsa.key -k "$KEYCHAIN_PATH" -A -t priv -f openssl -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
 
-        # Make this keychain active for the build
-        security list-keychains -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db"
-        security default-keychain -s "$KEYCHAIN_PATH"
-        security unlock-keychain -p "" "$KEYCHAIN_NAME"
+          echo "🔑 Identities:"
+          security find-identity -v -p codesigning || true
 
-        # Allow non-interactive codesign access
-        security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
+      - name: Install provisioning profile
+        shell: bash
+        run: |
+          set -eo pipefail
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp Punchio.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/punchio.mobileprovision"
 
-        echo "🔑 Identities now available:"
-        security find-identity -v -p codesigning || true
+      # Ensure export options are modern + include teamID
+      - name: Ensure ExportOptions has team & method
+        shell: bash
+        run: |
+          set -eo pipefail
+          P=ios/ExportOptions.plist
+          /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$P"
+          /usr/libexec/PlistBuddy -c "Set :teamID $IOS_TEAM_ID" "$P"       2>/dev/null || /usr/libexec/PlistBuddy -c "Add :teamID string $IOS_TEAM_ID" "$P"
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
 
-    - name: Install provisioning profile
-      shell: bash
-      run: |
-        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        cp Punchio.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
+      # --- Build archive with Automatic signing (Team is in project); no identity/profile overrides ---
+      - name: Archive (Runner)
+        shell: bash
+        run: |
+          set -eo pipefail
+          ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/build.keychain-db"
 
-    - name: Inspect signing setup
-      shell: bash
-      run: |
-        echo "🔑 Identities:"
-        security find-identity -v -p codesigning || true
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            clean archive \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
-        echo "📄 Profile app id:"
-        security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision -o profile.plist
-        /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' profile.plist || true
+          echo "🔎 Archive Info:"
+          /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties' "$ARCHIVE_PATH/Info.plist" || true
 
-    - name: Verify signing material
-      run: |
-        echo "🔍 Verifying imported signing material..."
-        
-        # Check if certificate was imported
-        echo "📋 Available certificates:"
-        security find-identity -v -p codesigning
-        
-        # Check if provisioning profile was installed
-        echo "📋 Installed provisioning profiles:"
-        ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
-        
-        # Verify the specific profile
-        if [ -f ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision ]; then
-          echo "✅ Provisioning profile installed successfully"
-          # Show profile details
-          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision | \
-            grep -A 5 -B 5 "com.punchio.punchio" || echo "⚠️  Bundle ID not found in profile"
-        else
-          echo "❌ Provisioning profile not found!"
-          exit 1
-        fi
-        
-        echo "✅ Signing material verification completed"
-        
-    - name: Debug iOS Project
-      run: |
-        echo "🔍 Debugging iOS project configuration..."
-        echo "📋 iOS project structure:"
-        ls -la ios/
-        echo ""
-        echo "📋 Xcode project settings:"
-        grep -n "DEVELOPMENT_TEAM\|PRODUCT_BUNDLE_IDENTIFIER\|CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj | head -10
-        echo ""
-        echo "📋 Export options:"
-        cat ios/ExportOptions.plist
-        echo ""
-        echo "📋 Podfile:"
-        head -20 ios/Podfile
-        
-    - name: Preflight: cert and profile match
-      shell: bash
-      run: |
-        set -euo pipefail
+      - name: Export IPA
+        shell: bash
+        run: |
+          set -eo pipefail
+          EXPORT_DIR="build/ios/ipa"; mkdir -p "$EXPORT_DIR"
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportPath "$EXPORT_DIR" \
+            -exportOptionsPlist ios/ExportOptions.plist
+          ls -lah "$EXPORT_DIR"
 
-        PROFILE=~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
-        security cms -D -i "$PROFILE" -o profile.plist
-
-        echo "🔎 Profile's allowed cert SHA1 hashes:"
-        /usr/libexec/PlistBuddy -c 'Print :CertificateSHA1Hashes' profile.plist
-
-        # Pick the Apple Distribution identity we imported (first match)
-        echo "🔎 Installed code signing identities:"
-        security find-identity -v -p codesigning || true
-
-        ID_SHA=$(security find-identity -v -p codesigning | awk '/Apple Distribution/ {print $2; exit}')
-        if [ -z "${ID_SHA:-}" ]; then
-          echo "❌ No Apple Distribution identity found in keychain."
-          exit 1
-        fi
-
-        echo "🔎 Using identity SHA: $ID_SHA"
-
-        # Check if profile contains that SHA
-        if ! /usr/libexec/PlistBuddy -c 'Print :CertificateSHA1Hashes' profile.plist | grep -qi "$ID_SHA"; then
-          echo "❌ The provisioning profile does not include the signing certificate ($ID_SHA)."
-          echo "   Regenerate the profile selecting the SAME Apple Distribution cert as your .p12, then update IOS_PROFILE_BASE64."
-          exit 1
-        fi
-
-        echo "✅ Profile matches the installed Distribution certificate."
-
-    - name: Ensure ExportOptions has team & new method
-      shell: bash
-      run: |
-        set -euo pipefail
-        P=ios/ExportOptions.plist
-        /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$P"
-        /usr/libexec/PlistBuddy -c "Set :teamID $IOS_TEAM_ID" "$P"       2>/dev/null || /usr/libexec/PlistBuddy -c "Add :teamID string $IOS_TEAM_ID" "$P"
-      env:
-        IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-
-    - name: Archive (Team comes from project; no overrides)
-      shell: bash
-      run: |
-        set -euo pipefail
-        ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
-        KEYCHAIN_PATH="$HOME/Library/Keychains/build.keychain-db"
-
-        xcodebuild \
-          -workspace ios/Runner.xcworkspace \
-          -scheme Runner \
-          -configuration Release \
-          -destination "generic/platform=iOS" \
-          -archivePath "$ARCHIVE_PATH" \
-          clean archive \
-          OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
-
-        echo "🔎 Archive completed successfully"
-
-    - name: Export IPA from archive
-      shell: bash
-      run: |
-        set -euo pipefail
-        EXPORT_DIR="build/ios/ipa"; mkdir -p "$EXPORT_DIR"
-
-        xcodebuild -exportArchive \
-          -archivePath build/ios/archive/Runner.xcarchive \
-          -exportPath "$EXPORT_DIR" \
-          -exportOptionsPlist ios/ExportOptions.plist
-
-        echo "📦 Exported files:" && ls -lah "$EXPORT_DIR"
-        
-    - name: Upload IPA file
-      uses: actions/upload-artifact@v4
-      with:
-        name: punchio-ipa
-        path: |
-          build/**/*.ipa
-        retention-days: 30
-        
-    - name: Debug on failure
-      if: failure()
-      run: |
-        echo "🔍 Debug information:"
-        echo "📋 Flutter doctor:"
-        flutter doctor -v
-        echo ""
-        echo "📋 iOS project structure:"
-        ls -la ios/
-        echo ""
-        echo "📋 Xcode project settings:"
-        grep -n "DEVELOPMENT_TEAM\|PRODUCT_BUNDLE_IDENTIFIER\|CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj | head -10
-        echo ""
-        echo "📋 Export options:"
-        cat ios/ExportOptions.plist
-        echo ""
-        echo "📋 GitHub Secrets Status:"
-        echo "IOS_CERT_P12_BASE64 secret exists: ${{ secrets.IOS_CERT_P12_BASE64 != '' }}"
-        echo "IOS_PROFILE_BASE64 secret exists: ${{ secrets.IOS_PROFILE_BASE64 != '' }}"
-        echo "IOS_CERT_PASSWORD secret exists: ${{ secrets.IOS_CERT_PASSWORD != '' }}"
-        echo "IOS_TEAM_ID secret exists: ${{ secrets.IOS_TEAM_ID != '' }}"
-        echo "IOS_BUNDLE_ID secret exists: ${{ secrets.IOS_BUNDLE_ID != '' }}"
-        echo "APPLE_ID secret exists: ${{ secrets.APPLE_ID != '' }}"
-        echo "APPLE_PASSWORD secret exists: ${{ secrets.APPLE_PASSWORD != '' }}"
-        echo "APP_DISPLAY_NAME secret exists: ${{ secrets.APP_DISPLAY_NAME != '' }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: punchio-ipa
+          path: build/**/*.ipa
+          retention-days: 30
