@@ -137,11 +137,16 @@ jobs:
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: Make JWT (PEP668-safe venv)
+      - name: Decode ASC key
+        shell: bash
+        run: echo "${ASC_KEY_P8_BASE64}" | base64 --decode > asc_key.p8
+        env: 
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+
+      - name: Make JWT
         shell: bash
         run: |
           set -euo pipefail
-          echo "${ASC_KEY_P8_BASE64}" | base64 --decode > asc_key.p8
           python3 -m venv venv && source venv/bin/activate
           pip install --quiet pyjwt cryptography
           python - <<'PY' > jwt.txt
@@ -153,39 +158,40 @@ jobs:
           print(jwt.encode(payload, key, algorithm="ES256", headers=headers))
           PY
         env:
-          ASC_KEY_ID:        ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID:     ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
 
-      - name: Transporter auth probe (lists providers)
+      - name: Transporter provider probe
+        shell: bash
+        run: xcrun iTMSTransporter -m provider -jwt "$(cat jwt.txt)" -v eXtreme
+
+      - name: App visibility probe
         shell: bash
         run: |
           set -euo pipefail
           TOKEN=$(cat jwt.txt)
-          xcrun iTMSTransporter -m provider -jwt "$TOKEN" -v eXtreme
-
-      - name: App Store Connect visibility probe (does the app exist for this key?)
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOKEN=$(cat jwt.txt)
-          BUNDLE_ID="${IOS_BUNDLE_ID}"
-          # Should return "data": [ { id: "...", attributes: { bundleId: ... } } ]
-          curl -sfS https://api.appstoreconnect.apple.com/v1/apps\?filter%5BbundleId%5D=${BUNDLE_ID} \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/json" | python3 - <<'PY' || exit 1
+          curl -sfS "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=${IOS_BUNDLE_ID}" \
+            -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" \
+            | python3 - <<'PY'
           import sys, json
-          j=json.load(sys.stdin)
-          items=j.get("data",[])
-          print(f"apps found: {len(items)}")
-          if not items:
-            print("❌ No app with that bundle id visible to this API key. Create the app in App Store Connect or adjust key access.")
-            sys.exit(2)
-          else:
-            print("✅ App record visible to API key:", items[0]["id"])
+          j=json.load(sys.stdin); items=j.get("data",[])
+          print("apps found:", len(items))
+          assert items, "No app record for this bundle id is visible to this API key."
+          print("app id:", items[0]["id"])
           PY
-        env:
+        env: 
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+
+      - name: Check IPA bundle id & team
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+          unzip -p "$IPA" Payload/*.app/embedded.mobileprovision > embedded.plist
+          echo "application-identifier:"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' embedded.plist
+          echo "profile name:"
+          /usr/libexec/PlistBuddy -c 'Print :Name' embedded.plist || true
 
       - name: Upload IPA with Apple Transporter (JWT)
         shell: bash
