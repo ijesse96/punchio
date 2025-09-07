@@ -180,6 +180,38 @@ jobs:
         echo "📋 Podfile:"
         head -20 ios/Podfile
         
+    - name: Preflight: cert ↔ profile match
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PROFILE=~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
+        security cms -D -i "$PROFILE" -o profile.plist
+
+        echo "🔎 Profile's allowed cert SHA1 hashes:"
+        /usr/libexec/PlistBuddy -c 'Print :CertificateSHA1Hashes' profile.plist
+
+        # Pick the Apple Distribution identity we imported (first match)
+        echo "🔎 Installed code signing identities:"
+        security find-identity -v -p codesigning || true
+
+        ID_SHA=$(security find-identity -v -p codesigning | awk '/Apple Distribution/ {print $2; exit}')
+        if [ -z "${ID_SHA:-}" ]; then
+          echo "❌ No Apple Distribution identity found in keychain."
+          exit 1
+        fi
+
+        echo "🔎 Using identity SHA: $ID_SHA"
+
+        # Check if profile contains that SHA
+        if ! /usr/libexec/PlistBuddy -c 'Print :CertificateSHA1Hashes' profile.plist | grep -qi "$ID_SHA"; then
+          echo "❌ The provisioning profile does not include the signing certificate ($ID_SHA)."
+          echo "   Regenerate the profile selecting the SAME Apple Distribution cert as your .p12, then update IOS_PROFILE_BASE64."
+          exit 1
+        fi
+
+        echo "✅ Profile matches the installed Distribution certificate."
+
     - name: Ensure ExportOptions has team & new method
       shell: bash
       run: |
