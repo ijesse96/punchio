@@ -66,6 +66,28 @@ jobs:
         
         echo "✅ All required secrets are available"
         
+    - name: Preflight .p12 validity & password
+      shell: bash
+      run: |
+        echo "$IOS_CERT_P12_BASE64" | base64 --decode > cert.p12
+        echo "🧪 Checking PKCS#12 structure and password..."
+        if ! openssl pkcs12 -in cert.p12 -passin pass:"$IOS_CERT_PASSWORD" -nokeys -info >/dev/null 2>&1; then
+          echo "❌ PKCS#12 failed to open with the provided password."
+          echo "Common causes:"
+          echo " - IOS_CERT_P12_BASE64 is not a .p12 (did you paste a .cer?)"
+          echo " - IOS_CERT_PASSWORD doesn't match the .p12 you created"
+          echo " - The .p12 is corrupted"
+          exit 1
+        fi
+        echo "✅ .p12 opens with the provided password."
+
+        echo "🔎 Listing codesign identities (should show Apple Distribution):"
+        security import cert.p12 -k ~/Library/Keychains/login.keychain-db -P "$IOS_CERT_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
+        security find-identity -v -p codesigning || true
+      env:
+        IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+        IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+        
     - name: Import signing certs
       uses: apple-actions/import-codesign-certs@v2
       with:
