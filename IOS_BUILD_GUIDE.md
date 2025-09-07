@@ -22,13 +22,25 @@ git push -u origin main
    - `CERTIFICATE`: Your iOS certificate (base64 encoded)
    - `PROVISIONING_PROFILE`: Your provisioning profile (base64 encoded)
 
-### Step 3: Update ExportOptions.plist
-Replace `YOUR_TEAM_ID` in `ios/ExportOptions.plist` with your actual Team ID.
+### Step 3: Configure Export Options
+The project now includes two export configurations:
+- `ios/ExportOptions.plist` - Updated for App Store distribution (app-store method)
+- `ios/ExportOptions-appstore.plist` - Dedicated App Store export configuration
 
-### Step 4: Build
+Both files use your Team ID: `MNRC5F55U3`
+
+### Step 4: Build for App Store/TestFlight
 - Push any change to trigger the build
+- The build script now uses `app-store` export method by default
 - Download the `.ipa` file from Actions → Artifacts
-- Install on your iPhone 14 using Xcode or Apple Configurator
+- Upload to App Store Connect for TestFlight or App Store distribution
+
+### Step 5: App Store Distribution Requirements
+For App Store/TestFlight distribution, ensure you have:
+- **Apple Distribution Certificate** (not Apple Development)
+- **App Store Provisioning Profile** (not Development or Ad Hoc)
+- **App Store Connect** app record created
+- **Bundle ID** matches: `com.punchio.punchio`
 
 ## Option 2: Codemagic (Easier)
 

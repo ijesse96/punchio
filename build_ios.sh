@@ -8,6 +8,7 @@ echo "📋 Current configuration:"
 echo "   - Team ID: ${TEAM_ID:-'NOT SET'}"
 echo "   - Bundle ID: com.punchio.punchio"
 echo "   - Build mode: release"
+echo "   - Export method: app-store (TestFlight/App Store)"
 echo "   - Apple ID: ${APPLE_ID:-'NOT SET'}"
 
 # Verify secrets are available
@@ -75,11 +76,11 @@ xcodebuild -workspace Runner.xcworkspace \
 echo "✅ Archive created successfully!"
 
 # Export IPA
-echo "🚀 Exporting IPA..."
+echo "🚀 Exporting IPA for App Store..."
 xcodebuild -exportArchive \
   -archivePath build/Runner.xcarchive \
   -exportPath build/ipa \
-  -exportOptionsPlist ../ExportOptions.plist 2>&1 | tee export.log || {
+  -exportOptionsPlist ../ExportOptions-appstore.plist 2>&1 | tee export.log || {
     echo "❌ IPA export failed with exit code $?"
     echo ""
     echo "🔍 Key errors from export log:"

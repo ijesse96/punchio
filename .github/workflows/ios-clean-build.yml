@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-14
     
     steps:
     - name: Checkout repository
@@ -35,73 +35,76 @@ jobs:
     - name: Verify GitHub Secrets
       run: |
         echo "🔍 Verifying GitHub secrets..."
-        echo "TEAM_ID secret exists: ${{ secrets.TEAM_ID != '' }}"
+        echo "IOS_CERT_P12_BASE64 secret exists: ${{ secrets.IOS_CERT_P12_BASE64 != '' }}"
+        echo "IOS_PROFILE_BASE64 secret exists: ${{ secrets.IOS_PROFILE_BASE64 != '' }}"
+        echo "IOS_CERT_PASSWORD secret exists: ${{ secrets.IOS_CERT_PASSWORD != '' }}"
+        echo "IOS_TEAM_ID secret exists: ${{ secrets.IOS_TEAM_ID != '' }}"
+        echo "IOS_BUNDLE_ID secret exists: ${{ secrets.IOS_BUNDLE_ID != '' }}"
         echo "APPLE_ID secret exists: ${{ secrets.APPLE_ID != '' }}"
         echo "APPLE_PASSWORD secret exists: ${{ secrets.APPLE_PASSWORD != '' }}"
         
-        if [ -z "${{ secrets.TEAM_ID }}" ]; then
-          echo "❌ ERROR: TEAM_ID secret is not set!"
+        if [ -z "${{ secrets.IOS_CERT_P12_BASE64 }}" ]; then
+          echo "❌ ERROR: IOS_CERT_P12_BASE64 secret is not set!"
           exit 1
         fi
-        if [ -z "${{ secrets.APPLE_ID }}" ]; then
-          echo "❌ ERROR: APPLE_ID secret is not set!"
+        if [ -z "${{ secrets.IOS_PROFILE_BASE64 }}" ]; then
+          echo "❌ ERROR: IOS_PROFILE_BASE64 secret is not set!"
           exit 1
         fi
-        if [ -z "${{ secrets.APPLE_PASSWORD }}" ]; then
-          echo "❌ ERROR: APPLE_PASSWORD secret is not set!"
+        if [ -z "${{ secrets.IOS_CERT_PASSWORD }}" ]; then
+          echo "❌ ERROR: IOS_CERT_PASSWORD secret is not set!"
+          exit 1
+        fi
+        if [ -z "${{ secrets.IOS_TEAM_ID }}" ]; then
+          echo "❌ ERROR: IOS_TEAM_ID secret is not set!"
+          exit 1
+        fi
+        if [ -z "${{ secrets.IOS_BUNDLE_ID }}" ]; then
+          echo "❌ ERROR: IOS_BUNDLE_ID secret is not set!"
           exit 1
         fi
         
         echo "✅ All required secrets are available"
         
-    - name: Setup Code Signing
-      env:
-        TEAM_ID: ${{ secrets.TEAM_ID }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+    - name: Import signing certs
+      uses: apple-actions/import-codesign-certs@v2
+      with:
+        p12-file-base64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+        p12-password: ${{ secrets.IOS_CERT_PASSWORD }}
+
+    - name: Install provisioning profile
+      shell: bash
       run: |
-        echo "🔐 Setting up code signing..."
-        
-        # Create keychain for code signing
-        security create-keychain -p "" build.keychain
-        security default-keychain -s build.keychain
-        security unlock-keychain -p "" build.keychain
-        security set-keychain-settings -t 3600 -u build.keychain
-        
-        # Set keychain search list
-        security list-keychains -d user -s build.keychain
-        
-        echo "✅ Code signing setup completed"
-        
-    - name: Authenticate with Apple
+        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+        echo "${IOS_PROFILE_BASE64}" | base64 --decode > \
+          ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
       env:
-        TEAM_ID: ${{ secrets.TEAM_ID }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+
+    - name: Verify signing material
       run: |
-        echo "🍎 Authenticating with Apple Developer Portal..."
+        echo "🔍 Verifying imported signing material..."
         
-        # Create a temporary keychain for authentication
-        security create-keychain -p "" temp.keychain
-        security default-keychain -s temp.keychain
-        security unlock-keychain -p "" temp.keychain
-        security set-keychain-settings -t 3600 -u temp.keychain
+        # Check if certificate was imported
+        echo "📋 Available certificates:"
+        security find-identity -v -p codesigning
         
-        # Authenticate with Apple using xcrun altool
-        echo "🔑 Authenticating with Apple ID: $APPLE_ID"
-        xcrun altool --list-providers \
-          --username "$APPLE_ID" \
-          --password "$APPLE_PASSWORD" \
-          --team-id "$TEAM_ID" || {
-            echo "❌ Apple authentication failed!"
-            echo "Please check your Apple ID and app-specific password"
-            exit 1
-          }
+        # Check if provisioning profile was installed
+        echo "📋 Installed provisioning profiles:"
+        ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
         
-        echo "✅ Apple authentication successful!"
+        # Verify the specific profile
+        if [ -f ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision ]; then
+          echo "✅ Provisioning profile installed successfully"
+          # Show profile details
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision | \
+            grep -A 5 -B 5 "com.punchio.punchio" || echo "⚠️  Bundle ID not found in profile"
+        else
+          echo "❌ Provisioning profile not found!"
+          exit 1
+        fi
         
-        # Clean up temporary keychain
-        security delete-keychain temp.keychain
+        echo "✅ Signing material verification completed"
         
     - name: Debug iOS Project
       run: |
@@ -118,38 +121,12 @@ jobs:
         echo "📋 Podfile:"
         head -20 ios/Podfile
         
-    - name: Build iOS App with Flutter
-      env:
-        TEAM_ID: ${{ secrets.TEAM_ID }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+    - name: Build IPA (Release, manual signing)
       run: |
-        echo "🚀 Building iOS app with Flutter (bypassing xcodebuild export issues)..."
-        
-        # Use Flutter's built-in IPA generation which handles authentication better
-        echo "📱 Starting Flutter build..."
-        flutter build ipa \
-          --release \
-          --export-options-plist=ios/ExportOptions.plist \
-          --build-name=1.0.0 \
-          --build-number=1 2>&1 | tee flutter_build.log
-        
-        # Check if build succeeded
-        if [ ! -d "build/ios/ipa" ] || [ ! -f "build/ios/ipa"/*.ipa ]; then
-          echo "❌ Flutter build failed! No IPA file created."
-          echo "📋 Key errors from Flutter build log:"
-          grep -i "error\|failed" flutter_build.log | head -20
-          echo ""
-          echo "📋 Last 50 lines of Flutter build log:"
-          tail -50 flutter_build.log
-          exit 1
-        fi
-        
-        echo "✅ Flutter build completed successfully!"
-        
-        # List the generated IPA file
-        echo "📱 Generated IPA file:"
-        ls -la build/ios/ipa/*.ipa
+        /usr/libexec/PlistBuddy -c "Set :CFBundleName '${APP_DISPLAY_NAME:-Punchio}'" ios/Runner/Info.plist
+        flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+      env:
+        APP_DISPLAY_NAME: ${{ secrets.APP_DISPLAY_NAME }}
         
     - name: Upload IPA file
       uses: actions/upload-artifact@v4
@@ -160,10 +137,6 @@ jobs:
         
     - name: Debug on failure
       if: failure()
-      env:
-        TEAM_ID: ${{ secrets.TEAM_ID }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       run: |
         echo "🔍 Debug information:"
         echo "📋 Flutter doctor:"
@@ -178,12 +151,12 @@ jobs:
         echo "📋 Export options:"
         cat ios/ExportOptions.plist
         echo ""
-        echo "📋 Environment variables:"
-        echo "TEAM_ID: ${TEAM_ID:-'NOT SET'}"
-        echo "APPLE_ID: ${APPLE_ID:-'NOT SET'}"
-        echo "APPLE_PASSWORD: ${APPLE_PASSWORD:+'SET'}"
-        echo ""
         echo "📋 GitHub Secrets Status:"
-        echo "TEAM_ID secret exists: ${{ secrets.TEAM_ID != '' }}"
+        echo "IOS_CERT_P12_BASE64 secret exists: ${{ secrets.IOS_CERT_P12_BASE64 != '' }}"
+        echo "IOS_PROFILE_BASE64 secret exists: ${{ secrets.IOS_PROFILE_BASE64 != '' }}"
+        echo "IOS_CERT_PASSWORD secret exists: ${{ secrets.IOS_CERT_PASSWORD != '' }}"
+        echo "IOS_TEAM_ID secret exists: ${{ secrets.IOS_TEAM_ID != '' }}"
+        echo "IOS_BUNDLE_ID secret exists: ${{ secrets.IOS_BUNDLE_ID != '' }}"
         echo "APPLE_ID secret exists: ${{ secrets.APPLE_ID != '' }}"
         echo "APPLE_PASSWORD secret exists: ${{ secrets.APPLE_PASSWORD != '' }}"
+        echo "APP_DISPLAY_NAME secret exists: ${{ secrets.APP_DISPLAY_NAME != '' }}"
