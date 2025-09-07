@@ -137,26 +137,41 @@ jobs:
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: Upload IPA with Apple Transporter
+      - name: Upload IPA to TestFlight (Transporter via JWT)
         shell: bash
         run: |
           set -euo pipefail
 
-          # Put the API key where Transporter will look for it
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo "${ASC_KEY_P8_BASE64}" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          # 1) Decode your App Store Connect API key
+          echo "${ASC_KEY_P8_BASE64}" | base64 --decode > asc_key.p8
 
+          # 2) Generate a short-lived JWT for App Store Connect (ES256)
+          python3 -m pip install --quiet pyjwt cryptography
+          python3 - <<'PY' > jwt.txt
+          import os, time
+          import jwt  # pyjwt
+          with open('asc_key.p8','r') as f:
+              key = f.read()
+          payload = {
+            "iss": os.environ["ASC_ISSUER_ID"],
+            "exp": int(time.time()) + 1200,   # 20 minutes
+            "aud": "appstoreconnect-v1"
+          }
+          headers = { "kid": os.environ["ASC_KEY_ID"] }
+          token = jwt.encode(payload, key, algorithm="ES256", headers=headers)
+          print(token)
+          PY
+
+          # 3) Use Transporter with the JWT (avoids OpenSSL key parsing entirely)
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
-
-          # Upload using App Store Connect API key
+          TOKEN=$(cat jwt.txt)
           xcrun iTMSTransporter -m upload \
             -assetFile "$IPA" \
-            -apiKey "${ASC_KEY_ID}" \
-            -apiIssuer "${ASC_ISSUER_ID}" \
+            -jwt "$TOKEN" \
             -v informational
         env:
           ASC_KEY_ID:        ${{ secrets.ASC_KEY_ID }}        # e.g. R42R6KGJ9G
-          ASC_ISSUER_ID:     ${{ secrets.ASC_ISSUER_ID }}     # GUID from App Store Connect
+          ASC_ISSUER_ID:     ${{ secrets.ASC_ISSUER_ID }}     # the GUID from App Store Connect
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }} # base64 of the .p8 file
 
       - uses: actions/upload-artifact@v4
