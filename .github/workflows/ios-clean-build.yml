@@ -66,42 +66,56 @@ jobs:
         
         echo "✅ All required secrets are available"
         
-    - name: Preflight .p12 validity & password
+    - name: Decode signing files
       shell: bash
       run: |
         echo "$IOS_CERT_P12_BASE64" | base64 --decode > cert.p12
-        echo "🧪 Checking PKCS#12 structure and password..."
-        if ! openssl pkcs12 -in cert.p12 -passin pass:"$IOS_CERT_PASSWORD" -nokeys -info >/dev/null 2>&1; then
-          echo "❌ PKCS#12 failed to open with the provided password."
-          echo "Common causes:"
-          echo " - IOS_CERT_P12_BASE64 is not a .p12 (did you paste a .cer?)"
-          echo " - IOS_CERT_PASSWORD doesn't match the .p12 you created"
-          echo " - The .p12 is corrupted"
-          exit 1
-        fi
-        echo "✅ .p12 opens with the provided password."
-
-        echo "🔎 Listing codesign identities (should show Apple Distribution):"
-        security import cert.p12 -k ~/Library/Keychains/login.keychain-db -P "$IOS_CERT_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
-        security find-identity -v -p codesigning || true
+        echo "$IOS_PROFILE_BASE64"   | base64 --decode > Punchio.mobileprovision
       env:
         IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+        IOS_PROFILE_BASE64:  ${{ secrets.IOS_PROFILE_BASE64 }}
+
+    - name: Extract key and cert from P12
+      shell: bash
+      run: |
+        # Convert p12 to a flat PEM (contains both cert and private key)
+        openssl pkcs12 -in cert.p12 -passin pass:"$IOS_CERT_PASSWORD" -nodes -out signing.pem
+
+        # Split PEM into separate files
+        awk 'BEGIN{p=0}/-----BEGIN PRIVATE KEY-----/{p=1} p; /-----END PRIVATE KEY-----/{print; exit}' signing.pem > signing.key
+        awk 'BEGIN{p=0}/-----BEGIN CERTIFICATE-----/{p=1} p; /-----END CERTIFICATE-----/{print; exit}' signing.pem > signing.cer
+
+        # Quick sanity check
+        test -s signing.key && test -s signing.cer || { echo "Missing key/cert after extraction"; exit 1; }
+      env:
         IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
-        
-    - name: Import signing certs
-      uses: apple-actions/import-codesign-certs@v2
-      with:
-        p12-file-base64: ${{ secrets.IOS_CERT_P12_BASE64 }}
-        p12-password: ${{ secrets.IOS_CERT_PASSWORD }}
+
+    - name: Import key+cert into temp keychain
+      shell: bash
+      run: |
+        security create-keychain -p "" build.keychain
+        security set-keychain-settings -lut 21600 build.keychain
+        security unlock-keychain -p "" build.keychain
+
+        # Import cert and private key (PEM)
+        security import signing.cer -k build.keychain -A -t cert -f pemseq -T /usr/bin/codesign -T /usr/bin/security
+        security import signing.key -k build.keychain -A -t priv -f pem    -T /usr/bin/codesign -T /usr/bin/security
+
+        # Make this keychain active for the build
+        security list-keychains -s build.keychain $(security list-keychains | sed 's/ *"//g')
+        security default-keychain -s build.keychain
+
+        # Allow codesign/xcodebuild to use the key non-interactively
+        security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+
+        echo "🔑 Identities now available:"
+        security find-identity -v -p codesigning || true
 
     - name: Install provisioning profile
       shell: bash
       run: |
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        echo "${IOS_PROFILE_BASE64}" | base64 --decode > \
-          ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
-      env:
-        IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+        cp Punchio.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/punchio.mobileprovision
 
     - name: Verify signing material
       run: |
