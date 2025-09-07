@@ -180,7 +180,7 @@ jobs:
         echo "📋 Podfile:"
         head -20 ios/Podfile
         
-    - name: Preflight: cert ↔ profile match
+    - name: Preflight: cert and profile match
       shell: bash
       run: |
         set -euo pipefail
