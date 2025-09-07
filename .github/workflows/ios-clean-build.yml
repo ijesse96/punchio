@@ -158,19 +158,28 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: App visibility probe
+      - name: App visibility probe (show HTTP + body on error)
         shell: bash
         run: |
           set -euo pipefail
           TOKEN=$(cat jwt.txt)
-          curl -sfS "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=${IOS_BUNDLE_ID}" \
-            -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" \
-            | python3 - <<'PY'
-          import sys,json
-          j=json.load(sys.stdin); items=j.get("data",[])
-          print("apps found:", len(items))
-          assert items, "❌ No app record for this bundle id is visible to this API key."
-          print("✅ App id:", items[0]["id"])
+          BUNDLE_ID="${IOS_BUNDLE_ID}"
+          HTTP=$(curl -sS -o resp.json -w '%{http_code}' \
+            "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=${BUNDLE_ID}" \
+            -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" || true)
+          echo "HTTP=${HTTP}"
+          if [ "$HTTP" != "200" ]; then
+            echo "—— Response (truncated) ——"
+            head -c 2000 resp.json; echo
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json; j=json.load(open('resp.json'))
+          print("apps found:", len(j.get('data',[])))
+          if not j.get('data'):
+            print("❌ No app record visible to this API key for that bundle id.")
+            raise SystemExit(2)
+          print("✅ App id:", j['data'][0]['id'])
           PY
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
