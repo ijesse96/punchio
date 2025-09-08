@@ -128,27 +128,17 @@ jobs:
             -exportOptionsPlist ios/ExportOptions.plist
           ls -lah "$EXPORT_DIR"
 
-      - name: Check IPA identifiers (bundle id / team / profile name)
+      - name: Check IPA identifiers (bundle id / team / profile)
         shell: bash
         run: |
           set -euo pipefail
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
-
-          # 1) Decode the embedded provisioning profile to a real plist
           unzip -p "$IPA" "Payload/*.app/embedded.mobileprovision" > embedded.mobileprovision
           security cms -D -i embedded.mobileprovision -o embedded.plist
-
           echo "application-identifier (TEAMID.bundle):"
           /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' embedded.plist || true
-
-          echo "profile name:"
-          /usr/libexec/PlistBuddy -c 'Print :Name' embedded.plist || true
-
-          # 2) Also print CFBundleIdentifier from the app's Info.plist (quick sanity check)
           unzip -o "$IPA" "Payload/*.app/Info.plist" -d ipa_tmp >/dev/null
-          INFO_PLIST=$(echo ipa_tmp/Payload/*.app/Info.plist)
-          echo "CFBundleIdentifier:"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST" || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' ipa_tmp/Payload/*.app/Info.plist || true
 
       - name: Validate App Store Connect .p8
         shell: bash
@@ -213,6 +203,30 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
+      - name: Transporter: list providers (Apple ID) + dump logs on failure
+        shell: bash
+        run: |
+          set -e
+          set +e
+          xcrun iTMSTransporter -m provider \
+            -u "${APPLE_ID}" \
+            -p "${ASC_APP_SPECIFIC_PASSWORD}" \
+            -v eXtreme
+          CODE=$?
+          echo "Transporter exit code: $CODE"
+          echo "---- Latest Transporter logs ----"
+          LOG_DIR="$HOME/Library/Logs/Transporter"
+          ls -lt "$LOG_DIR" | head -n 5 || true
+          LATEST=$(ls -t "$LOG_DIR" 2>/dev/null | head -n 1)
+          if [ -n "$LATEST" ]; then
+            echo "Showing $LOG_DIR/$LATEST"
+            tail -n 300 "$LOG_DIR/$LATEST" || true
+          fi
+          exit $CODE
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
+
       - name: Upload IPA with Transporter (JWT)
         shell: bash
         run: |
@@ -222,6 +236,33 @@ jobs:
             -assetFile "$IPA" \
             -jwt "$(cat jwt.txt)" \
             -v eXtreme
+
+      - name: Upload IPA with Transporter (Apple ID)
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+
+          # If previous step listed a provider *short name*, set it here:
+          if [ -n "${PROVIDER:-}" ]; then
+            xcrun iTMSTransporter -m upload \
+              -assetFile "$IPA" \
+              -u "${APPLE_ID}" \
+              -p "${ASC_APP_SPECIFIC_PASSWORD}" \
+              -itc_provider "${PROVIDER}" \
+              -v eXtreme
+          else
+            xcrun iTMSTransporter -m upload \
+              -assetFile "$IPA" \
+              -u "${APPLE_ID}" \
+              -p "${ASC_APP_SPECIFIC_PASSWORD}" \
+              -v eXtreme
+          fi
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
+          # Set this env at the job level if the log showed a provider short name:
+          # PROVIDER: JesseIbarra
 
       - uses: actions/upload-artifact@v4
         with:
