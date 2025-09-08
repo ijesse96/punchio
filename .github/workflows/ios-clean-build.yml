@@ -203,7 +203,7 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
-      - name: Transporter: list providers (Apple ID) + dump logs on failure
+      - name: Transporter list providers and dump logs on failure
         shell: bash
         run: |
           set +e
