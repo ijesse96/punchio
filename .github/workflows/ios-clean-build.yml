@@ -220,16 +220,44 @@ jobs:
       #     APPLE_ID: ${{ secrets.APPLE_ID }}
       #     ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
 
-      - name: Upload IPA via classic Transporter (no Mac needed)
+      - name: Locate Transporter JAR (Xcode 14)
+        id: find_jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Xcode: $(xcodebuild -version || true)"
+          # Find the JAR shipped with Xcode 14
+          JAR=$(find /Applications -path "*/ContentDeliveryServices.framework/itms/lib/itmstransporter-launcher.jar" -maxdepth 6 -print -quit)
+          if [ -z "$JAR" ]; then
+            echo "❌ Transporter JAR not found. Ensure this job runs on macos-13 (Xcode 14.x)."
+            exit 1
+          fi
+          JAVA="$(dirname "$JAR")/../java/bin/java"
+          if [ ! -x "$JAVA" ]; then
+            echo "❌ Transporter Java not found at $JAVA"
+            exit 1
+          fi
+          echo "jar=$JAR"  >> "$GITHUB_OUTPUT"
+          echo "java=$JAVA" >> "$GITHUB_OUTPUT"
+
+      - name: Upload IPA via Transporter JAR (API key)
         if: steps.vis.outputs.found == 'true'
+        shell: bash
+        env:
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           set -euo pipefail
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
-          CDS="/Applications/Xcode_14.3.1.app/Contents/SharedFrameworks/ContentDeliveryServices.framework"
-          JAR=$(find "$CDS" -type f -name 'itmstransporter-launcher.jar' -print -quit)
-          /usr/bin/java -jar "$JAR" -m upload \
+          JAVA="${{ steps.find_jar.outputs.java }}"
+          JAR="${{ steps.find_jar.outputs.jar }}"
+          echo "JAVA=$JAVA"
+          echo "JAR=$JAR"
+          "$JAVA" -jar "$JAR" \
+            -m upload \
+            -apiKey "$ASC_KEY_ID" \
+            -apiIssuer "$ASC_ISSUER_ID" \
             -assetFile "$IPA" \
-            -jwt "$(cat jwt.txt)" \
             -v eXtreme
 
       # - name: Upload IPA with Transporter (Apple ID)
