@@ -191,6 +191,23 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
+      - name: Transporter auth (JWT) — diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat jwt.txt)"
+          # Check Transporter version
+          xcrun iTMSTransporter -version || true
+
+          # Try a simple authenticated call with JWT and write a log
+          xcrun iTMSTransporter -m provider \
+            -jwt "$TOKEN" \
+            -logfile transporter.log \
+            -v eXtreme || true
+
+          echo "---- Transporter log (last 200 lines) ----"
+          tail -n 200 transporter.log || true
+
       # - name: Transporter list providers and dump logs on failure
       #   shell: bash
       #   run: |
