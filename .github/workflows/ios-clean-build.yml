@@ -191,14 +191,35 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
-      - name: Transporter smoke test (direct path, API key)
+      - name: Find iTMSTransporter path
+        id: trans
         shell: bash
         run: |
           set -euo pipefail
-          # Make sure we're on Xcode 15.4 and use Transporter directly (bypass xcrun)
-          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-          TRANS="/Applications/Xcode_15.4.app/Contents/SharedFrameworks/ContentDeliveryServices.framework/itms/bin/iTMSTransporter"
+          echo "Xcode: $(xcodebuild -version || true)"
+          echo "DevDir: $(xcode-select -p || true)"
+          P="$(xcrun -f iTMSTransporter || true)"
+          if [ -n "$P" ] && [ -x "$P" ]; then
+            echo "Found via xcrun: $P"
+            echo "path=$P" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fallback: search common Xcode locations
+          for X in /Applications/Xcode*.app; do
+            C="$X/Contents/SharedFrameworks/ContentDeliveryServices.framework/itms/bin/iTMSTransporter"
+            if [ -x "$C" ]; then
+              echo "Found by scan: $C"
+              echo "path=$C" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "❌ Could not locate iTMSTransporter"; ls -la /Applications; exit 1
 
+      - name: Transporter smoke test (API key)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRANS='${{ steps.trans.outputs.path }}'
           echo "Transporter version:"
           "$TRANS" -version || true
 
@@ -255,18 +276,22 @@ jobs:
       #     APPLE_ID: ${{ secrets.APPLE_ID }}
       #     ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
 
-      - name: Upload IPA with Transporter (JWT)
+      - name: Upload IPA with Transporter (API key)
         if: steps.vis.outputs.found == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          TRANS='${{ steps.trans.outputs.path }}'
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
-          # Helpful log file (kept private in artifacts)
-          xcrun iTMSTransporter -m upload \
+          "$TRANS" -m upload \
             -assetFile "$IPA" \
-            -jwt "$(cat jwt.txt)" \
+            -apiKey "${ASC_KEY_ID}" \
+            -apiIssuer "${ASC_ISSUER_ID}" \
             -logfile transporter.log \
             -v eXtreme
+        env:
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
 
       # - name: Upload IPA with Transporter (Apple ID)
       #   shell: bash
