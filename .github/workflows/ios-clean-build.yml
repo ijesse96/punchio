@@ -191,6 +191,30 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
+      - name: Transporter smoke test (direct path, API key)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Make sure we're on Xcode 15.4 and use Transporter directly (bypass xcrun)
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          TRANS="/Applications/Xcode_15.4.app/Contents/SharedFrameworks/ContentDeliveryServices.framework/itms/bin/iTMSTransporter"
+
+          echo "Transporter version:"
+          "$TRANS" -version || true
+
+          echo "Provider listing (API key auth)…"
+          "$TRANS" -m provider \
+            -apiKey "${ASC_KEY_ID}" \
+            -apiIssuer "${ASC_ISSUER_ID}" \
+            -logfile transporter.log \
+            -v eXtreme || true
+
+          echo "---- tail transporter.log ----"
+          tail -n 200 transporter.log || true
+        env:
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
       - name: Transporter auth (JWT) — diagnostics
         shell: bash
         run: |
