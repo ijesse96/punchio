@@ -206,7 +206,6 @@ jobs:
       - name: Transporter: list providers (Apple ID) + dump logs on failure
         shell: bash
         run: |
-          set -e
           set +e
           xcrun iTMSTransporter -m provider \
             -u "${APPLE_ID}" \
