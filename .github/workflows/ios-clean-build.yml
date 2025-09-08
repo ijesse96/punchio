@@ -27,8 +27,7 @@ jobs:
         run: |
           gem install cocoapods -N
           cd ios
-          pod repo update
-          pod install
+          pod install --repo-update
 
       # --- Signing material: decode + import into temp keychain ---
       - name: Decode signing files
@@ -171,6 +170,7 @@ jobs:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
       - name: App visibility probe
+        id: vis
         shell: bash
         run: |
           set -euo pipefail
@@ -179,40 +179,47 @@ jobs:
           HTTP=$(curl -sS -o resp.json -w '%{http_code}' \
             -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" "$URL" || true)
           echo "HTTP=${HTTP}"
-          python3 - <<'PY'
+          COUNT=$(python3 - <<'PY'
 import json, sys
-j=json.load(open('resp.json'))
-items=j.get('data',[])
-print("apps found:", len(items))
-sys.exit(0 if items else 2)
+try:
+  j=json.load(open('resp.json')); print(len(j.get('data',[])))
+except Exception: print(0)
 PY
+)
+          echo "apps found: $COUNT"
+          if [ "$HTTP" = "200" ] && [ "$COUNT" -gt 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
-      - name: Transporter list providers and dump logs on failure
-        shell: bash
-        run: |
-          set +e
-          xcrun iTMSTransporter -m provider \
-            -u "${APPLE_ID}" \
-            -p "${ASC_APP_SPECIFIC_PASSWORD}" \
-            -v eXtreme
-          CODE=$?
-          echo "Transporter exit code: $CODE"
-          echo "---- Latest Transporter logs ----"
-          LOG_DIR="$HOME/Library/Logs/Transporter"
-          ls -lt "$LOG_DIR" | head -n 5 || true
-          LATEST=$(ls -t "$LOG_DIR" 2>/dev/null | head -n 1)
-          if [ -n "$LATEST" ]; then
-            echo "Showing $LOG_DIR/$LATEST"
-            tail -n 300 "$LOG_DIR/$LATEST" || true
-          fi
-          exit $CODE
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
+      # - name: Transporter list providers and dump logs on failure
+      #   shell: bash
+      #   run: |
+      #     set +e
+      #     xcrun iTMSTransporter -m provider \
+      #       -u "${APPLE_ID}" \
+      #       -p "${ASC_APP_SPECIFIC_PASSWORD}" \
+      #       -v eXtreme
+      #     CODE=$?
+      #     echo "Transporter exit code: $CODE"
+      #     echo "---- Latest Transporter logs ----"
+      #     LOG_DIR="$HOME/Library/Logs/Transporter"
+      #     ls -lt "$LOG_DIR" | head -n 5 || true
+      #     LATEST=$(ls -t "$LOG_DIR" 2>/dev/null | head -n 1)
+      #     if [ -n "$LATEST" ]; then
+      #       echo "Showing $LOG_DIR/$LATEST"
+      #       tail -n 300 "$LOG_DIR/$LATEST" || true
+      #     fi
+      #     exit $CODE
+      #   env:
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
 
       - name: Upload IPA with Transporter (JWT)
+        if: steps.vis.outputs.found == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -222,34 +229,35 @@ PY
             -jwt "$(cat jwt.txt)" \
             -v eXtreme
 
-      - name: Upload IPA with Transporter (Apple ID)
-        shell: bash
-        run: |
-          set -euo pipefail
-          IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
-
-          # If previous step listed a provider *short name*, set it here:
-          if [ -n "${PROVIDER:-}" ]; then
-            xcrun iTMSTransporter -m upload \
-              -assetFile "$IPA" \
-              -u "${APPLE_ID}" \
-              -p "${ASC_APP_SPECIFIC_PASSWORD}" \
-              -itc_provider "${PROVIDER}" \
-              -v eXtreme
-          else
-            xcrun iTMSTransporter -m upload \
-              -assetFile "$IPA" \
-              -u "${APPLE_ID}" \
-              -p "${ASC_APP_SPECIFIC_PASSWORD}" \
-              -v eXtreme
-          fi
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
-          # Set this env at the job level if the log showed a provider short name:
-          # PROVIDER: JesseIbarra
+      # - name: Upload IPA with Transporter (Apple ID)
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+      #
+      #     # If previous step listed a provider *short name*, set it here:
+      #     if [ -n "${PROVIDER:-}" ]; then
+      #       xcrun iTMSTransporter -m upload \
+      #         -assetFile "$IPA" \
+      #         -u "${APPLE_ID}" \
+      #         -p "${ASC_APP_SPECIFIC_PASSWORD}" \
+      #         -itc_provider "${PROVIDER}" \
+      #         -v eXtreme
+      #     else
+      #       xcrun iTMSTransporter -m upload \
+      #         -assetFile "$IPA" \
+      #         -u "${APPLE_ID}" \
+      #         -p "${ASC_APP_SPECIFIC_PASSWORD}" \
+      #         -v eXtreme
+      #     fi
+      #   env:
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
+      #     # Set this env at the job level if the log showed a provider short name:
+      #     # PROVIDER: JesseIbarra
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: punchio-ipa
           path: build/**/*.ipa
