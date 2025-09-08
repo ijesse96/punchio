@@ -191,6 +191,53 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
+      - name: Transporter (Java) — auto locate jar & smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEV="$(xcode-select -p)"
+          ROOT="$(cd "$DEV/.." && pwd)"
+          echo "DEV=$DEV"
+          echo "ROOT=$ROOT"
+
+          # Find Transporter's launcher JAR inside Xcode's ContentDeliveryServices.framework
+          JAR="$(/usr/bin/find "$ROOT" -path "*ContentDeliveryServices.framework*" -name itmstransporter-launcher.jar -print -quit || true)"
+          echo "JAR=$JAR"
+          if [ -z "$JAR" ]; then
+            echo "❌ Could not find itmstransporter-launcher.jar under $ROOT"
+            /usr/bin/find "$ROOT" -maxdepth 4 -type d -name "*ContentDeliveryServices.framework*" -print || true
+            exit 1
+          fi
+
+          # Pick a Java: use JAVA_HOME if set, else system Java (GitHub runners usually have Temurin)
+          if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+            JAVA="$JAVA_HOME/bin/java"
+          else
+            CAND="$((/usr/libexec/java_home -v 17) 2>/dev/null || (/usr/libexec/java_home -v 11) 2>/dev/null || true)"
+            if [ -n "$CAND" ] && [ -x "$CAND/bin/java" ]; then
+              JAVA="$CAND/bin/java"
+            else
+              JAVA="java"
+            fi
+          fi
+
+          echo "Using JAVA: $JAVA"
+          "$JAVA" -version || true
+
+          echo "Provider listing (API key auth) via Java…"
+          "$JAVA" -jar "$JAR" \
+            -m provider \
+            -apiKey "${ASC_KEY_ID}" \
+            -apiIssuer "${ASC_ISSUER_ID}" \
+            -logfile transporter.log \
+            -v eXtreme || true
+
+          echo "---- tail transporter.log ----"
+          tail -n 200 transporter.log || true
+        env:
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
       - name: Find iTMSTransporter path
         id: trans
         shell: bash
