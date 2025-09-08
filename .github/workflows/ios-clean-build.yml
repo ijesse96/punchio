@@ -7,13 +7,16 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    runs-on: macos-13
     env:
       LC_ALL: en_US.UTF-8
       LANG: en_US.UTF-8
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 14.3.1
+        run: sudo xcode-select -s /Applications/Xcode_14.3.1.app/Contents/Developer
 
       - uses: subosito/flutter-action@v2
         with:
@@ -191,180 +194,6 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
-      - name: Inspect iTMSTransporter wrapper
-        shell: bash
-        run: |
-          set -euo pipefail
-          TRANS="$(xcrun -f iTMSTransporter)"
-          echo "TRANS=$TRANS"
-          file "$TRANS" || true
-          echo "---- first 120 lines (if script) ----"
-          # If it's a script, this prints where it tries to load its payload from.
-          head -n 120 "$TRANS" || true
-
-      - name: List CDS framework contents
-        shell: bash
-        run: |
-          set -euo pipefail
-          DEV="$(xcode-select -p)"
-          ROOT="$(cd "$DEV/.." && pwd)"
-          CDS_DIR="$(/usr/bin/find "$ROOT" -maxdepth 3 -type d -name 'ContentDeliveryServices.framework' -print -quit || true)"
-          echo "DEV=$DEV"
-          echo "ROOT=$ROOT"
-          echo "CDS_DIR=$CDS_DIR"
-          if [ -z "$CDS_DIR" ]; then
-            echo "❌ ContentDeliveryServices.framework not found under $ROOT"
-            exit 1
-          fi
-          echo "---- Top-level in CDS ----"
-          ls -la "$CDS_DIR" || true
-          echo "---- Recursively list itms/ and lib/ if present ----"
-          /usr/bin/find "$CDS_DIR" -maxdepth 3 -type d -name itms -print -exec ls -la {} \; || true
-          /usr/bin/find "$CDS_DIR" -maxdepth 3 -type f -name '*transporter*.jar' -print || true
-          /usr/bin/find "$CDS_DIR" -maxdepth 3 -type f -name 'iTMSTransporter' -print || true
-
-      - name: Transporter (Java) — auto locate jar & smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          DEV="$(xcode-select -p)"
-          ROOT="$(cd "$DEV/.." && pwd)"
-          echo "DEV=$DEV"
-          echo "ROOT=$ROOT"
-
-          # Find Transporter's launcher JAR inside Xcode's ContentDeliveryServices.framework
-          JAR="$(/usr/bin/find "$ROOT" -path "*ContentDeliveryServices.framework*" -name itmstransporter-launcher.jar -print -quit || true)"
-          echo "JAR=$JAR"
-          if [ -z "$JAR" ]; then
-            echo "❌ Could not find itmstransporter-launcher.jar under $ROOT"
-            /usr/bin/find "$ROOT" -maxdepth 4 -type d -name "*ContentDeliveryServices.framework*" -print || true
-            exit 1
-          fi
-
-          # Pick a Java: use JAVA_HOME if set, else system Java (GitHub runners usually have Temurin)
-          if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
-            JAVA="$JAVA_HOME/bin/java"
-          else
-            CAND="$((/usr/libexec/java_home -v 17) 2>/dev/null || (/usr/libexec/java_home -v 11) 2>/dev/null || true)"
-            if [ -n "$CAND" ] && [ -x "$CAND/bin/java" ]; then
-              JAVA="$CAND/bin/java"
-            else
-              JAVA="java"
-            fi
-          fi
-
-          echo "Using JAVA: $JAVA"
-          "$JAVA" -version || true
-
-          echo "Provider listing (API key auth) via Java…"
-          "$JAVA" -jar "$JAR" \
-            -m provider \
-            -apiKey "${ASC_KEY_ID}" \
-            -apiIssuer "${ASC_ISSUER_ID}" \
-            -logfile transporter.log \
-            -v eXtreme || true
-
-          echo "---- tail transporter.log ----"
-          tail -n 200 transporter.log || true
-        env:
-          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-
-      - name: Find iTMSTransporter path
-        id: trans
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Xcode: $(xcodebuild -version || true)"
-          echo "DevDir: $(xcode-select -p || true)"
-          P="$(xcrun -f iTMSTransporter || true)"
-          if [ -n "$P" ] && [ -x "$P" ]; then
-            echo "Found via xcrun: $P"
-            echo "path=$P" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Fallback: search common Xcode locations
-          for X in /Applications/Xcode*.app; do
-            C="$X/Contents/SharedFrameworks/ContentDeliveryServices.framework/itms/bin/iTMSTransporter"
-            if [ -x "$C" ]; then
-              echo "Found by scan: $C"
-              echo "path=$C" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          echo "❌ Could not locate iTMSTransporter"; ls -la /Applications; exit 1
-
-      - name: Transporter smoke test (API key)
-        shell: bash
-        run: |
-          set -euo pipefail
-          TRANS='${{ steps.trans.outputs.path }}'
-          echo "Transporter version:"
-          "$TRANS" -version || true
-
-          echo "Provider listing (API key auth)…"
-          "$TRANS" -m provider \
-            -apiKey "${ASC_KEY_ID}" \
-            -apiIssuer "${ASC_ISSUER_ID}" \
-            -logfile transporter.log \
-            -v eXtreme || true
-
-          echo "---- tail transporter.log ----"
-          tail -n 200 transporter.log || true
-        env:
-          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-
-      - name: Transporter via Java (bypass launcher) — smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          DEV="$((xcode-select -p) 2>/dev/null || true)"
-          CDS="$(python3 - <<'PY'
-          import os,sys
-          p=os.popen('xcode-select -p').read().strip()
-          print(os.path.abspath(os.path.join(p, '../SharedFrameworks/ContentDeliveryServices.framework')))
-          PY
-          )"
-          JAVA="$CDS/itms/java/bin/java"
-          JAR="$CDS/itms/lib/itmstransporter-launcher.jar"
-
-          echo "DEV:  $DEV"
-          echo "CDS:  $CDS"
-          echo "JAVA: $JAVA"
-          echo "JAR:  $JAR"
-          "$JAVA" -version
-
-          echo "Provider listing (API key auth) via Java…"
-          "$JAVA" -jar "$JAR" \
-            -m provider \
-            -apiKey "${ASC_KEY_ID}" \
-            -apiIssuer "${ASC_ISSUER_ID}" \
-            -logfile transporter.log \
-            -v eXtreme || true
-
-          echo "---- tail transporter.log ----"
-          tail -n 200 transporter.log || true
-        env:
-          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-
-      - name: Transporter auth (JWT) — diagnostics
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOKEN="$(cat jwt.txt)"
-          # Check Transporter version
-          xcrun iTMSTransporter -version || true
-
-          # Try a simple authenticated call with JWT and write a log
-          xcrun iTMSTransporter -m provider \
-            -jwt "$TOKEN" \
-            -logfile transporter.log \
-            -v eXtreme || true
-
-          echo "---- Transporter log (last 200 lines) ----"
-          tail -n 200 transporter.log || true
 
       # - name: Transporter list providers and dump logs on failure
       #   shell: bash
@@ -389,22 +218,17 @@ jobs:
       #     APPLE_ID: ${{ secrets.APPLE_ID }}
       #     ASC_APP_SPECIFIC_PASSWORD: ${{ secrets.ASC_APP_SPECIFIC_PASSWORD }}
 
-      - name: Upload IPA with Transporter (API key)
+      - name: Upload IPA via classic Transporter (no Mac needed)
         if: steps.vis.outputs.found == 'true'
-        shell: bash
         run: |
           set -euo pipefail
-          TRANS='${{ steps.trans.outputs.path }}'
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
-          "$TRANS" -m upload \
+          CDS="/Applications/Xcode_14.3.1.app/Contents/SharedFrameworks/ContentDeliveryServices.framework"
+          JAR=$(find "$CDS" -type f -name 'itmstransporter-launcher.jar' -print -quit)
+          /usr/bin/java -jar "$JAR" -m upload \
             -assetFile "$IPA" \
-            -apiKey "${ASC_KEY_ID}" \
-            -apiIssuer "${ASC_ISSUER_ID}" \
-            -logfile transporter.log \
+            -jwt "$(cat jwt.txt)" \
             -v eXtreme
-        env:
-          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
 
       # - name: Upload IPA with Transporter (Apple ID)
       #   shell: bash
