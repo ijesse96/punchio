@@ -180,12 +180,12 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" "$URL" || true)
           echo "HTTP=${HTTP}"
           COUNT=$(python3 - <<'PY'
-import json, sys
-try:
-  j=json.load(open('resp.json')); print(len(j.get('data',[])))
-except Exception: print(0)
-PY
-)
+          import json, sys
+          try:
+            j=json.load(open('resp.json')); print(len(j.get('data',[])))
+          except Exception: print(0)
+          PY
+          )
           echo "apps found: $COUNT"
           echo "found=$([ "$HTTP" = "200" ] && [ "$COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
         env:
