@@ -236,6 +236,40 @@ jobs:
           ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
 
+      - name: Transporter via Java (bypass launcher) — smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEV="$((xcode-select -p) 2>/dev/null || true)"
+          CDS="$(python3 - <<'PY'
+import os,sys
+p=os.popen('xcode-select -p').read().strip()
+print(os.path.abspath(os.path.join(p, '../SharedFrameworks/ContentDeliveryServices.framework')))
+PY
+)"
+          JAVA="$CDS/itms/java/bin/java"
+          JAR="$CDS/itms/lib/itmstransporter-launcher.jar"
+
+          echo "DEV:  $DEV"
+          echo "CDS:  $CDS"
+          echo "JAVA: $JAVA"
+          echo "JAR:  $JAR"
+          "$JAVA" -version
+
+          echo "Provider listing (API key auth) via Java…"
+          "$JAVA" -jar "$JAR" \
+            -m provider \
+            -apiKey "${ASC_KEY_ID}" \
+            -apiIssuer "${ASC_ISSUER_ID}" \
+            -logfile transporter.log \
+            -v eXtreme || true
+
+          echo "---- tail transporter.log ----"
+          tail -n 200 transporter.log || true
+        env:
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
       - name: Transporter auth (JWT) — diagnostics
         shell: bash
         run: |
