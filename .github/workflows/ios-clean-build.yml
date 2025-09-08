@@ -242,11 +242,11 @@ jobs:
           set -euo pipefail
           DEV="$((xcode-select -p) 2>/dev/null || true)"
           CDS="$(python3 - <<'PY'
-import os,sys
-p=os.popen('xcode-select -p').read().strip()
-print(os.path.abspath(os.path.join(p, '../SharedFrameworks/ContentDeliveryServices.framework')))
-PY
-)"
+          import os,sys
+          p=os.popen('xcode-select -p').read().strip()
+          print(os.path.abspath(os.path.join(p, '../SharedFrameworks/ContentDeliveryServices.framework')))
+          PY
+          )"
           JAVA="$CDS/itms/java/bin/java"
           JAR="$CDS/itms/lib/itmstransporter-launcher.jar"
 
