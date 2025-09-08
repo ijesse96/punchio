@@ -169,7 +169,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: App visibility probe
+      - name: App visibility probe (uses secret bundle id)
         id: vis
         shell: bash
         run: |
@@ -180,18 +180,14 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" "$URL" || true)
           echo "HTTP=${HTTP}"
           COUNT=$(python3 - <<'PY'
-          import json, sys
-          try:
-            j=json.load(open('resp.json')); print(len(j.get('data',[])))
-          except Exception: print(0)
-          PY
-          )
+import json, sys
+try:
+  j=json.load(open('resp.json')); print(len(j.get('data',[])))
+except Exception: print(0)
+PY
+)
           echo "apps found: $COUNT"
-          if [ "$HTTP" = "200" ] && [ "$COUNT" -gt 0 ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "found=$([ "$HTTP" = "200" ] && [ "$COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
@@ -224,9 +220,11 @@ jobs:
         run: |
           set -euo pipefail
           IPA=$(ls build/ios/ipa/*.ipa | head -n 1)
+          # Helpful log file (kept private in artifacts)
           xcrun iTMSTransporter -m upload \
             -assetFile "$IPA" \
             -jwt "$(cat jwt.txt)" \
+            -logfile transporter.log \
             -v eXtreme
 
       # - name: Upload IPA with Transporter (Apple ID)
@@ -260,5 +258,7 @@ jobs:
         if: always()
         with:
           name: punchio-ipa
-          path: build/**/*.ipa
+          path: |
+            build/**/*.ipa
+            transporter.log
           retention-days: 30
