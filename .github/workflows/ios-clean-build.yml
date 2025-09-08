@@ -189,17 +189,17 @@ jobs:
           head -c 500 resp.json; echo
           echo "----- PARSE -----"
           python3 - <<'PY' || true
-          import json, sys
-          try:
-            with open('resp.json','rb') as f: data=f.read()
-            if not data.strip():
-              print("Empty response body"); sys.exit(3)
-            j=json.loads(data)
-            print("apps found:", len(j.get("data",[])))
-            if not j.get("data"): sys.exit(2)
-          except Exception as e:
-            print("JSON parse error:", e); sys.exit(4)
-          PY
+import json, sys
+try:
+  with open('resp.json','rb') as f: data=f.read()
+  if not data.strip():
+    print("Empty response body"); sys.exit(3)
+  j=json.loads(data)
+  print("apps found:", len(j.get("data",[])))
+  if not j.get("data"): sys.exit(2)
+except Exception as e:
+  print("JSON parse error:", e); sys.exit(4)
+PY
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
