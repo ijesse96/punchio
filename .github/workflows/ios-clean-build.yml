@@ -89,8 +89,10 @@ jobs:
         run: |
           set -eo pipefail
           P=ios/ExportOptions.plist
-          /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$P" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$P"
-          /usr/libexec/PlistBuddy -c "Set :teamID $IOS_TEAM_ID" "$P"       2>/dev/null || /usr/libexec/PlistBuddy -c "Add :teamID string $IOS_TEAM_ID" "$P"
+          /usr/libexec/PlistBuddy -c "Set :method app-store" "$P" \
+            2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store" "$P"
+          /usr/libexec/PlistBuddy -c "Set :teamID $IOS_TEAM_ID" "$P" \
+            2>/dev/null || /usr/libexec/PlistBuddy -c "Add :teamID string $IOS_TEAM_ID" "$P"
         env:
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
 
