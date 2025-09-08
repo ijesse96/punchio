@@ -191,6 +191,38 @@ jobs:
         env:
           IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
 
+      - name: Inspect iTMSTransporter wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRANS="$(xcrun -f iTMSTransporter)"
+          echo "TRANS=$TRANS"
+          file "$TRANS" || true
+          echo "---- first 120 lines (if script) ----"
+          # If it's a script, this prints where it tries to load its payload from.
+          head -n 120 "$TRANS" || true
+
+      - name: List CDS framework contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEV="$(xcode-select -p)"
+          ROOT="$(cd "$DEV/.." && pwd)"
+          CDS_DIR="$(/usr/bin/find "$ROOT" -maxdepth 3 -type d -name 'ContentDeliveryServices.framework' -print -quit || true)"
+          echo "DEV=$DEV"
+          echo "ROOT=$ROOT"
+          echo "CDS_DIR=$CDS_DIR"
+          if [ -z "$CDS_DIR" ]; then
+            echo "❌ ContentDeliveryServices.framework not found under $ROOT"
+            exit 1
+          fi
+          echo "---- Top-level in CDS ----"
+          ls -la "$CDS_DIR" || true
+          echo "---- Recursively list itms/ and lib/ if present ----"
+          /usr/bin/find "$CDS_DIR" -maxdepth 3 -type d -name itms -print -exec ls -la {} \; || true
+          /usr/bin/find "$CDS_DIR" -maxdepth 3 -type f -name '*transporter*.jar' -print || true
+          /usr/bin/find "$CDS_DIR" -maxdepth 3 -type f -name 'iTMSTransporter' -print || true
+
       - name: Transporter (Java) — auto locate jar & smoke test
         shell: bash
         run: |
