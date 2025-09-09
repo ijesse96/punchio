@@ -28,15 +28,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-    }
-    
-    // Optional: if you generate APKs
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a")
-            isUniversalApk = false
+        
+        // Target 64-bit only to reduce build memory and avoid jetifier OOMs
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+            // remove any "armeabi-v7a" or "x86_64" here for now
         }
     }
 
