@@ -54,7 +54,7 @@ class AudioMonitoringPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
-    private fun startMonitoring(result: Result) {
+    fun startMonitoring(result: Result) {
         try {
             if (isMonitoring) {
                 result.success(true)
@@ -181,7 +181,7 @@ class AudioMonitoringPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
-    private fun stopMonitoring(result: Result) {
+    fun stopMonitoring(result: Result) {
         try {
             cleanup()
             Log.d("AudioMonitoring", "Monitoring stopped")

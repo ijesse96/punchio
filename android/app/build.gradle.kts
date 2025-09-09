@@ -29,6 +29,16 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+    
+    // Optional: if you generate APKs
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = false
+        }
+    }
 
     buildTypes {
         release {
