@@ -13,7 +13,7 @@ import UIKit
     let audioMonitoringPlugin = AudioMonitoringPlugin()
     audioMonitoringChannel.setMethodCallHandler(audioMonitoringPlugin.handle)
     
-    GeneratedPluginRegistrant.register(with: self)
+    // GeneratedPluginRegistrant.register(with: self) // <-- TEMP: disable
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
