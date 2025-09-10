@@ -12,8 +12,11 @@ workflows:
     scripts:
       - name: Flutter deps
         script: |
+          # IMPORTANT: do not set --debug anywhere
+          unset FLUTTER_BUILD_MODE
           flutter clean
           flutter pub get
+          (cd ios && pod repo update && pod install)
       - name: Decode signing files
         script: |
           echo "$IOS_CERT_P12_BASE64" | base64 --decode > signing.p12
@@ -27,13 +30,23 @@ workflows:
           security import signing.p12 -k ~/Library/Keychains/$KEYCHAIN-db -P "$IOS_CERT_PASSWORD" -T /usr/bin/codesign -A
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-      - name: Build iOS
+      - name: Build Release IPA
         script: |
-          # Use a monotonic number so it never collides
-          BUILD_NUM=$(date +%s)   # or $CM_BUILD_ID
+          # unique build number so ASC accepts it
+          BUILD_NUM=${CM_BUILD_ID:-$(date +%s)}
           flutter build ipa --release --build-number=$BUILD_NUM
+      - name: Sanity check IPA
+        script: |
+          unzip -q build/ios/ipa/punchio.ipa -d /tmp/ipa_check
+          # Check if it's a DEBUG engine (should NOT find this text)
+          if strings /tmp/ipa_check/Payload/Runner.app/Frameworks/Flutter.framework/Flutter | grep -i "iOS 14+, debug mode Flutter apps"; then
+            echo "ERROR: This is a DEBUG build, not Release!"
+            exit 1
+          fi
+          # Confirm the build number actually changed
+          defaults read /tmp/ipa_check/Payload/Runner.app/Info CFBundleVersion
     artifacts:
-      - build/ios/ipa/*.ipa
+      - build/ipa/*.ipa
     publishing:
       app_store_connect:
         apple_id: $APPLE_ID
